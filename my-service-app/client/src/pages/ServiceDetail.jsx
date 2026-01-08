@@ -2,8 +2,7 @@ import { useEffect, useState, useContext } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
-// 👇 Import thêm MessageCircle
-import { MapPin, Clock, Star, MessageCircle, ShieldCheck, X, Trash2 } from 'lucide-react'; 
+import { MapPin, Clock, Star, MessageCircle, ShieldCheck, X, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import ReviewSection from '../components/ReviewSection';
 
@@ -11,7 +10,7 @@ const ServiceDetail = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useContext(AuthContext);
-    
+
     const [service, setService] = useState(null);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
@@ -54,27 +53,21 @@ const ServiceDetail = () => {
         } catch (error) { toast.error(error.response?.data?.message || "Đặt lịch thất bại"); }
     };
 
-    // --- 👇 HÀM XỬ LÝ CHAT (QUAN TRỌNG) ---
     const handleChat = async () => {
-        // 1. Kiểm tra đăng nhập
-        if (!user) { 
-            toast.error("Vui lòng đăng nhập để nhắn tin"); 
-            navigate('/login'); 
-            return; 
+        if (!user) {
+            toast.error("Vui lòng đăng nhập để nhắn tin");
+            navigate('/login');
+            return;
         }
-        
-        // 2. Không cho tự chat với mình
-        if (user._id === service.user._id) { 
-            toast.error("Đây là dịch vụ của bạn mà!"); 
-            return; 
+        if (user._id === service.user._id) {
+            toast.error("Đây là dịch vụ của bạn mà!");
+            return;
         }
-
         try {
-            // 3. Tạo phòng chat và chuyển hướng
             await api.post('/chat/conversation', { receiverId: service.user._id });
             navigate('/chat');
-        } catch (error) { 
-            toast.error("Lỗi kết nối chat"); 
+        } catch (error) {
+            toast.error("Lỗi kết nối chat");
         }
     };
 
@@ -86,7 +79,7 @@ const ServiceDetail = () => {
     return (
         <div className="container mx-auto px-4 py-8 relative">
             <div className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-0 md:gap-8 relative">
-                
+
                 {isOwner && (
                     <button onClick={handleDeleteService} className="absolute top-4 right-4 z-10 bg-red-100 text-red-600 p-2 rounded-full hover:bg-red-200 transition">
                         <Trash2 size={24} />
@@ -106,7 +99,7 @@ const ServiceDetail = () => {
 
                 <div className="p-6">
                     <div className="flex items-center gap-2 mb-2">
-                         <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">{service.category}</span>
+                        <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">{service.category}</span>
                         <div className="flex items-center text-yellow-500 text-sm font-bold">
                             <Star size={16} fill="currentColor" className="mr-1" />
                             {service.averageRating || 0} ({service.reviewCount || 0} đánh giá)
@@ -140,12 +133,7 @@ const ServiceDetail = () => {
                     {!isOwner ? (
                         <div className="flex gap-4">
                             <button onClick={handleOpenBooking} className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition shadow-lg">Đặt Lịch Ngay</button>
-                            
-                            {/* 👇 NÚT NHẮN TIN ĐÃ ĐƯỢC THÊM VÀO ĐÂY 👇 */}
-                            <button 
-                                onClick={handleChat} 
-                                className="flex-1 px-6 py-3 border border-gray-300 rounded-lg font-bold text-gray-700 flex justify-center items-center hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition"
-                            >
+                            <button onClick={handleChat} className="flex-1 px-6 py-3 border border-gray-300 rounded-lg font-bold text-gray-700 flex justify-center items-center hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition">
                                 <MessageCircle size={20} className="mr-2" /> Nhắn tin
                             </button>
                         </div>
@@ -153,12 +141,17 @@ const ServiceDetail = () => {
                         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-lg text-center font-medium">Đây là dịch vụ của bạn</div>
                     )}
 
-                     <div className="mt-8 pt-6 border-t">
+                    <div className="mt-8 pt-6 border-t">
                         <h3 className="text-lg font-bold mb-3">Mô tả chi tiết</h3>
                         <p className="text-gray-600 whitespace-pre-line">{service.description}</p>
                     </div>
 
-                    <ReviewSection serviceId={id} triggerRefresh={fetchService} />
+                    {/* TRUYỀN THÊM PROPS CHO REVIEWSECTION */}
+                    <ReviewSection
+                        serviceId={id}
+                        providerId={service.user?._id || service.user}
+                        triggerRefresh={fetchService}
+                    />
                 </div>
             </div>
 

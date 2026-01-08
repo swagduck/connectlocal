@@ -2,8 +2,6 @@ const Booking = require("../models/Booking");
 const Service = require("../models/Service");
 
 // @desc    Tạo đơn đặt lịch mới
-// @route   POST /api/bookings
-// @access  Private (Khách hàng)
 exports.createBooking = async (req, res, next) => {
   try {
     const { serviceId, date, note } = req.body;
@@ -20,7 +18,7 @@ exports.createBooking = async (req, res, next) => {
     }
 
     const booking = await Booking.create({
-      user: req.user.id,
+      user: req.user._id, // 👈 SỬA: Dùng _id thay vì id để đảm bảo chuẩn ObjectId
       provider: service.user,
       service: serviceId,
       date,
@@ -37,12 +35,9 @@ exports.createBooking = async (req, res, next) => {
 };
 
 // @desc    Lấy danh sách đơn hàng
-// @route   GET /api/bookings
-// @access  Private
 exports.getBookings = async (req, res, next) => {
   try {
     let query;
-
     if (req.user.role === "provider") {
       query = Booking.find({ provider: req.user.id });
     } else {
@@ -50,18 +45,9 @@ exports.getBookings = async (req, res, next) => {
     }
 
     const bookings = await query
-      .populate({
-        path: "service",
-        select: "title price images priceUnit",
-      })
-      .populate({
-        path: "user",
-        select: "name phone avatar email",
-      })
-      .populate({
-        path: "provider",
-        select: "name phone avatar email",
-      })
+      .populate({ path: "service", select: "title price images priceUnit" })
+      .populate({ path: "user", select: "name phone avatar email" })
+      .populate({ path: "provider", select: "name phone avatar email" })
       .sort("-createdAt");
 
     res.status(200).json({
@@ -75,8 +61,6 @@ exports.getBookings = async (req, res, next) => {
 };
 
 // @desc    Cập nhật trạng thái đơn hàng
-// @route   PUT /api/bookings/:id
-// @access  Private (Chỉ Provider hoặc Admin)
 exports.updateBookingStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
@@ -87,6 +71,7 @@ exports.updateBookingStatus = async (req, res, next) => {
       throw new Error("Không tìm thấy đơn hàng");
     }
 
+    // Kiểm tra quyền (Provider hoặc Admin)
     if (
       booking.provider.toString() !== req.user.id &&
       req.user.role !== "admin"
@@ -108,18 +93,14 @@ exports.updateBookingStatus = async (req, res, next) => {
 };
 
 // @desc    Xóa đơn hàng
-// @route   DELETE /api/bookings/:id
-// @access  Private (Chủ đơn hoặc Thợ nhận đơn)
 exports.deleteBooking = async (req, res, next) => {
   try {
     const booking = await Booking.findById(req.params.id);
-
     if (!booking) {
       res.status(404);
       throw new Error("Không tìm thấy đơn hàng");
     }
 
-    // Kiểm tra quyền: Người đặt (user) HOẶC Người nhận (provider) đều được xóa
     if (
       booking.user.toString() !== req.user.id &&
       booking.provider.toString() !== req.user.id &&
@@ -130,11 +111,7 @@ exports.deleteBooking = async (req, res, next) => {
     }
 
     await booking.deleteOne();
-
-    res.status(200).json({
-      success: true,
-      data: {},
-    });
+    res.status(200).json({ success: true, data: {} });
   } catch (error) {
     next(error);
   }

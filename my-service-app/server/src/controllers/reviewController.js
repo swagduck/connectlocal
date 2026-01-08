@@ -3,12 +3,11 @@ const Service = require("../models/Service");
 const Booking = require("../models/Booking");
 
 // @desc    Tạo hoặc Cập nhật đánh giá
-// (Mỗi khách chỉ 1 đánh giá/dịch vụ, nếu đánh giá lại sẽ tính là cập nhật)
 exports.createReview = async (req, res) => {
   const { rating, comment, serviceId } = req.body;
 
   try {
-    // 1. Kiểm tra xem khách đã có đơn hàng 'completed' với dịch vụ này chưa
+    // 1. Kiểm tra xem khách đã có đơn hàng 'completed'
     const hasCompletedBooking = await Booking.findOne({
       user: req.user._id,
       service: serviceId,
@@ -21,24 +20,21 @@ exports.createReview = async (req, res) => {
       });
     }
 
-    // 2. Kiểm tra xem khách đã từng đánh giá dịch vụ này chưa
+    // 2. Kiểm tra xem khách đã từng đánh giá chưa (để update)
     const existingReview = await Review.findOne({
       user: req.user._id,
       service: serviceId
     });
 
     if (existingReview) {
-      // --- TRƯỜNG HỢP: ĐÃ CÓ (CẬP NHẬT) ---
+      // Cập nhật
       existingReview.rating = Number(rating);
       existingReview.comment = comment;
-      
-      // Reset lại phản hồi của thợ (để thợ biết mà trả lời lại nội dung mới)
-      existingReview.reply = ""; 
+      existingReview.reply = ""; // Reset phản hồi của thợ
       existingReview.replyDate = null;
-      
       await existingReview.save();
     } else {
-      // --- TRƯỜNG HỢP: CHƯA CÓ (TẠO MỚI) ---
+      // Tạo mới
       await Review.create({
         user: req.user._id,
         service: serviceId,
@@ -47,33 +43,22 @@ exports.createReview = async (req, res) => {
       });
     }
 
-    // 3. Tính toán lại số sao trung bình của Service (Real-time)
-    const reviews = await Review.find({ service: serviceId });
-    const numberOfReviews = reviews.length;
-    
-    // Tính trung bình cộng
-    const averageRating = numberOfReviews === 0 ? 0 : 
-      reviews.reduce((acc, item) => item.rating + acc, 0) / numberOfReviews;
+    // 3. Tính toán lại số sao trung bình (Real-time)
+    await calculateAverageRating(serviceId);
 
-    // Cập nhật vào Service
-    await Service.findByIdAndUpdate(serviceId, {
-      averageRating: averageRating.toFixed(1),
-      numberOfReviews,
-    });
-
-    res.status(200).json({ success: true, message: "Đánh giá của bạn đã được ghi nhận!" });
+    res.status(200).json({ success: true, message: "Đánh giá thành công!" });
 
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// @desc    Lấy danh sách đánh giá của một dịch vụ
+// @desc    Lấy danh sách đánh giá
 exports.getServiceReviews = async (req, res) => {
   try {
     const reviews = await Review.find({ service: req.params.serviceId })
-      .populate("user", "name avatar") // Lấy tên và avatar người đánh giá
-      .sort("-updatedAt"); // Sắp xếp theo ngày cập nhật mới nhất
+      .populate("user", "name avatar")
+      .sort("-updatedAt");
     res.status(200).json(reviews);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -85,12 +70,10 @@ exports.replyReview = async (req, res) => {
   const { reply } = req.body;
   try {
     const review = await Review.findById(req.params.id).populate("service");
-
     if (!review) return res.status(404).json({ message: "Không tìm thấy đánh giá" });
 
-    // Kiểm tra quyền sở hữu dịch vụ (chỉ chủ dịch vụ mới được reply)
     if (review.service.user.toString() !== req.user._id.toString()) {
-      return res.status(401).json({ message: "Bạn không có quyền phản hồi đánh giá này" });
+      return res.status(401).json({ message: "Không có quyền phản hồi" });
     }
 
     review.reply = reply;
@@ -103,23 +86,61 @@ exports.replyReview = async (req, res) => {
   }
 };
 
-// @desc    Kiểm tra xem user có quyền đánh giá dịch vụ này không (để Frontend hiển thị form)
+// @desc    Kiểm tra quyền đánh giá
 exports.checkEligibility = async (req, res) => {
   try {
     const { serviceId } = req.params;
     
-    // Tìm đơn hàng đã hoàn thành của user với dịch vụ này
     const hasCompletedBooking = await Booking.findOne({
       user: req.user._id,
       service: serviceId,
       status: "completed",
     });
 
-    // Trả về true nếu tìm thấy
     res.status(200).json({ 
       canReview: !!hasCompletedBooking 
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
+};
+
+// @desc    Xóa đánh giá (MỚI)
+exports.deleteReview = async (req, res) => {
+  try {
+    const review = await Review.findById(req.params.id);
+
+    if (!review) {
+      return res.status(404).json({ message: "Không tìm thấy đánh giá" });
+    }
+
+    // Chỉ chủ sở hữu review hoặc Admin mới được xóa
+    if (review.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(401).json({ message: "Không có quyền xóa" });
+    }
+
+    const serviceId = review.service; // Lưu ID để tính lại điểm
+    await review.deleteOne();
+
+    // Tính lại điểm sau khi xóa
+    await calculateAverageRating(serviceId);
+
+    res.status(200).json({ success: true, message: "Đã xóa đánh giá" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Helper function: Tính toán trung bình sao
+const calculateAverageRating = async (serviceId) => {
+    const reviews = await Review.find({ service: serviceId });
+    const numberOfReviews = reviews.length;
+    
+    const averageRating = numberOfReviews === 0 ? 0 : 
+      reviews.reduce((acc, item) => item.rating + acc, 0) / numberOfReviews;
+
+    await Service.findByIdAndUpdate(serviceId, {
+      averageRating: averageRating.toFixed(1),
+      numberOfReviews,
+    });
 };
