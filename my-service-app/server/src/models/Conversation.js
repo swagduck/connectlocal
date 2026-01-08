@@ -8,11 +8,8 @@ const ConversationSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
-    lastMessage: {
-      type: String,
-      default: "",
-    },
-    lastMessageId: {
+    // 👇 SỬA: Đổi tên thành latestMessage để khớp với Controller
+    latestMessage: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Message",
     },

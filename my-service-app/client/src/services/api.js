@@ -1,14 +1,14 @@
 import axios from "axios";
 
-const API_URL = "http://localhost:5000/api";
-
 const api = axios.create({
-  baseURL: API_URL,
+  // Đảm bảo KHÔNG có dấu / ở cuối cùng
+  baseURL: "http://localhost:5000/api",
   headers: {
     "Content-Type": "application/json",
   },
 });
 
+// Đính kèm token để Backend nhận diện Admin
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {

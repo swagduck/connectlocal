@@ -2,7 +2,8 @@ const mongoose = require("mongoose");
 
 const MessageSchema = new mongoose.Schema(
   {
-    conversationId: {
+    // 👇 SỬA: Đổi conversationId -> conversation
+    conversation: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Conversation",
     },
@@ -12,7 +13,7 @@ const MessageSchema = new mongoose.Schema(
     },
     text: {
       type: String,
-      required: true,
+      trim: true,
     },
   },
   { timestamps: true }

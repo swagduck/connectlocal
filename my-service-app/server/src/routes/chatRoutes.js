@@ -2,7 +2,6 @@ const express = require("express");
 const router = express.Router();
 const { protect } = require("../middleware/authMiddleware");
 
-// Import Controller mới (đảm bảo tên hàm khớp với file Controller ở trên)
 const {
   accessConversation,
   getMyConversations,
@@ -10,15 +9,18 @@ const {
   sendMessage,
 } = require("../controllers/chatController");
 
-router.use(protect); // Bảo vệ tất cả routes
+router.use(protect);
 
-// 👇 Route gốc "/" tương ứng với "/api/chat"
-router
-  .route("/")
-  .post(accessConversation) // Tạo hoặc lấy chat (Frontend gọi POST /api/chat)
-  .get(getMyConversations); // Lấy danh sách (Frontend gọi GET /api/chat)
+// 1. Route tạo chat (POST /api/chat)
+router.route("/").post(accessConversation);
 
-// Route tin nhắn
+// 2. Route lấy danh sách chat (Sửa để khớp với frontend gọi /conversations)
+// Nếu frontend gọi /api/chat/conversations thì phải define route này:
+router.route("/conversations").get(getMyConversations);
+
+// (Tùy chọn) Giữ cả route gốc để dự phòng nếu frontend sửa lại gọi /api/chat
+router.route("/").get(getMyConversations);
+
 router.route("/messages").post(sendMessage);
 router.route("/messages/:conversationId").get(getMessages);
 

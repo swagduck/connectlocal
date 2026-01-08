@@ -2,13 +2,13 @@ import { useEffect, useState, useContext, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { SocketContext } from '../context/SocketContext';
 import api from '../services/api';
-import { Send, User, Circle } from 'lucide-react';
+import { Send } from 'lucide-react';
 
 const Chat = () => {
     const { user } = useContext(AuthContext);
-    // 👇 Lấy thêm notifications và hàm markAsRead
     const { socket, onlineUsers, notifications, markAsRead } = useContext(SocketContext);
     
+    // Khởi tạo là mảng rỗng để tránh lỗi map khi chưa có data
     const [conversations, setConversations] = useState([]);
     const [currentChat, setCurrentChat] = useState(null);
     const [messages, setMessages] = useState([]);
@@ -28,30 +28,35 @@ const Chat = () => {
     }, [socket]);
 
     useEffect(() => {
-        // Chỉ thêm tin nhắn vào khung chat nều đang mở đúng đoạn chat đó
         if (arrivalMessage && currentChat?.members.some(m => m._id === arrivalMessage.sender)) {
             setMessages((prev) => [...prev, arrivalMessage]);
-            // Nếu đang mở chat, coi như đã đọc ngay lập tức
             markAsRead(arrivalMessage.sender);
         }
     }, [arrivalMessage, currentChat]);
 
+    // 👇 SỬA LỖI 1: Lấy conversations
     useEffect(() => {
         const getConversations = async () => {
             try {
                 const res = await api.get("/chat/conversations");
-                setConversations(res.data.data);
+                // Backend trả về mảng trực tiếp -> res.data
+                setConversations(res.data); 
             } catch (err) { console.log(err); }
         };
-        getConversations();
-    }, [user._id]);
+        // Chỉ gọi khi user đã có id
+        if (user?._id) {
+            getConversations();
+        }
+    }, [user?._id]);
 
+    // 👇 SỬA LỖI 2: Lấy messages
     useEffect(() => {
         const getMessages = async () => {
             if (currentChat) {
                 try {
                     const res = await api.get("/chat/messages/" + currentChat._id);
-                    setMessages(res.data.data);
+                    // Backend trả về mảng trực tiếp -> res.data
+                    setMessages(res.data);
                 } catch (err) { console.log(err); }
             }
         };
@@ -80,7 +85,8 @@ const Chat = () => {
                 sender: user._id,
                 text: newMessage,
             });
-            setMessages([...messages, res.data.data]);
+            // 👇 SỬA LỖI 3: Thêm tin nhắn mới
+            setMessages([...messages, res.data]); 
             setNewMessage("");
         } catch (err) { console.log(err); }
     };
@@ -90,10 +96,8 @@ const Chat = () => {
         return onlineUsers.some((u) => u.userId === chatMember?._id);
     };
 
-    // Hàm xử lý khi bấm chọn một đoạn chat
     const handleChooseChat = (c, friendId) => {
         setCurrentChat(c);
-        // 👇 Xóa thông báo của người này
         markAsRead(friendId);
     };
 
@@ -103,17 +107,16 @@ const Chat = () => {
                 <div className="w-1/3 border-r bg-gray-50 flex flex-col">
                     <div className="p-4 border-b bg-white font-bold text-gray-700">Tin nhắn của bạn</div>
                     <div className="overflow-y-auto flex-1">
-                        {conversations.map((c) => {
+                        {/* Thêm kiểm tra optional chaining (?.) để an toàn */}
+                        {conversations?.map((c) => {
                             const friend = c.members.find((m) => m._id !== user._id);
                             const isOnline = checkOnline(c);
-                            
-                            // 👇 Kiểm tra xem đoạn chat này có tin nhắn chưa đọc không
                             const unreadCount = notifications.filter(n => n.senderId === friend._id).length;
 
                             return (
                                 <div 
                                     key={c._id} 
-                                    onClick={() => handleChooseChat(c, friend._id)} // Gọi hàm xử lý mới
+                                    onClick={() => handleChooseChat(c, friend._id)}
                                     className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-blue-50 transition ${currentChat?._id === c._id ? "bg-blue-100" : ""}`}
                                 >
                                     <div className="relative">
@@ -124,7 +127,6 @@ const Chat = () => {
                                         <div className="flex justify-between items-center">
                                             <p className="font-semibold text-gray-800 truncate">{friend?.name}</p>
                                             
-                                            {/* 👇 Hiện chấm đỏ trong danh sách chat */}
                                             {unreadCount > 0 && (
                                                 <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                                                     {unreadCount}
@@ -132,7 +134,7 @@ const Chat = () => {
                                             )}
                                         </div>
                                         <p className={`text-xs truncate ${unreadCount > 0 ? "font-bold text-black" : "text-gray-500"}`}>
-                                            {unreadCount > 0 ? "Tin nhắn mới..." : (c.lastMessage || "Bắt đầu trò chuyện...")}
+                                            {unreadCount > 0 ? "Tin nhắn mới..." : (c.latestMessage ? "Tin nhắn hình ảnh/văn bản" : "Bắt đầu trò chuyện...")}
                                         </p>
                                     </div>
                                 </div>
@@ -151,14 +153,14 @@ const Chat = () => {
                             </div>
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
                                 {messages.map((m, index) => (
-                                    <div key={index} ref={scrollRef} className={`flex ${m.sender === user._id ? "justify-end" : "justify-start"}`}>
+                                    <div key={index} ref={scrollRef} className={`flex ${m.sender === user._id || m.sender._id === user._id ? "justify-end" : "justify-start"}`}>
                                         <div className={`max-w-[70%] px-4 py-2 rounded-2xl shadow-sm text-sm ${
-                                            m.sender === user._id 
+                                            (m.sender === user._id || m.sender._id === user._id)
                                                 ? "bg-blue-600 text-white rounded-br-none" 
                                                 : "bg-white text-gray-800 border rounded-bl-none"
                                         }`}>
                                             <p>{m.text}</p>
-                                            <p className={`text-[10px] mt-1 text-right ${m.sender === user._id ? "text-blue-200" : "text-gray-400"}`}>
+                                            <p className={`text-[10px] mt-1 text-right ${(m.sender === user._id || m.sender._id === user._id) ? "text-blue-200" : "text-gray-400"}`}>
                                                 {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </p>
                                         </div>

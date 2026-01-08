@@ -1,23 +1,28 @@
 const express = require("express");
 const router = express.Router();
+
+// Import Controller
 const {
   getStats,
   getAllUsers,
   deleteUser,
-  getAllServices, // <-- Import thêm
-  getAllBookings, // <-- Import thêm
+  getAllServices,
+  getAllBookings,
 } = require("../controllers/adminController");
+
+// Import Middleware (Đảm bảo đường dẫn đúng)
 const { protect, authorize } = require("../middleware/authMiddleware");
 
-// Tất cả các route admin đều phải qua bước kiểm tra này
+// --- ÁP DỤNG MIDDLEWARE BẢO VỆ ---
+// Tất cả các route bên dưới đều yêu cầu Login (protect) và quyền Admin (authorize)
 router.use(protect);
 router.use(authorize("admin"));
 
+// --- CÁC ROUTES ---
 router.get("/stats", getStats);
 router.get("/users", getAllUsers);
 router.delete("/users/:id", deleteUser);
 
-// 👇 Route mới cho Dịch vụ và Đơn hàng
 router.get("/services", getAllServices);
 router.get("/bookings", getAllBookings);
 
