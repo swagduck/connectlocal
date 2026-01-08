@@ -34,10 +34,14 @@ const UserSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
-  // 👇 THÊM TRƯỜNG ĐỊA CHỈ
   address: {
     type: String,
     default: "",
+  },
+  // 👇 MỚI: Số dư ví (Mặc định là 0)
+  walletBalance: {
+    type: Number,
+    default: 0,
   },
   // Các trường dành riêng cho Thợ (Provider)
   rating: {
