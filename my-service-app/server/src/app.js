@@ -11,8 +11,9 @@ const requestRoutes = require("./routes/requestRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const chatRoutes = require("./routes/chatRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
-// 👇 1. IMPORT REVIEW ROUTES
-const reviewRoutes = require("./routes/reviewRoutes"); 
+const reviewRoutes = require("./routes/reviewRoutes");
+// 👇 1. IMPORT PAYMENT ROUTES TẠI ĐÂY
+const paymentRoutes = require("./routes/paymentRoutes");
 
 const app = express();
 
@@ -32,8 +33,9 @@ app.use("/api/requests", requestRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/upload", uploadRoutes);
-// 👇 2. ĐĂNG KÝ ROUTE REVIEW VÀO APP
-app.use("/api/reviews", reviewRoutes); 
+app.use("/api/reviews", reviewRoutes);
+// 👇 2. ĐĂNG KÝ ROUTE PAYMENT (Đặt trước notFound)
+app.use("/api/payment", paymentRoutes);
 
 // Error Handling
 app.use(notFound);

@@ -1,32 +1,81 @@
 const Booking = require("../models/Booking");
 const Service = require("../models/Service");
+const User = require("../models/User"); // 👈 Import User để trừ tiền
+const Transaction = require("../models/Transaction"); // 👈 Import Transaction để lưu lịch sử
 
-// @desc    Tạo đơn đặt lịch mới
+// @desc    Tạo đơn đặt hàng mới & Trừ tiền ví
+// @route   POST /api/bookings
+// @access  Private (Khách hàng)
 exports.createBooking = async (req, res, next) => {
   try {
     const { serviceId, date, note } = req.body;
 
-    const service = await Service.findById(serviceId);
+    // 1. Tìm dịch vụ để lấy giá tiền
+    const service = await Service.findById(serviceId).populate("user", "name");
     if (!service) {
       res.status(404);
       throw new Error("Dịch vụ không tồn tại");
     }
 
-    if (service.user.toString() === req.user.id) {
+    // 2. Lấy thông tin người mua (để check số dư mới nhất)
+    const buyer = await User.findById(req.user.id);
+
+    // 3. KIỂM TRA SỐ DƯ VÍ
+    const price = service.price;
+    if (buyer.walletBalance < price) {
       res.status(400);
-      throw new Error("Bạn không thể tự đặt dịch vụ của chính mình");
+      // Gợi ý nạp tiền nếu thiếu
+      throw new Error(
+        `Số dư không đủ. Cần ${price.toLocaleString()}đ nhưng ví chỉ còn ${buyer.walletBalance.toLocaleString()}đ. Hãy nạp thêm!`
+      );
     }
 
+    // 4. TRỪ TIỀN & LƯU
+    buyer.walletBalance -= price;
+    await buyer.save();
+
+    // 5. TẠO LỊCH SỬ GIAO DỊCH (Trừ tiền)
+    await Transaction.create({
+      user: buyer._id,
+      amount: price,
+      type: "payment", // Loại: Thanh toán
+      status: "completed",
+      paymentMethod: "wallet",
+      description: `Thanh toán dịch vụ: ${service.name}`,
+    });
+
+    // 6. CỘNG TIỀN CHO THỢ (Tùy chọn: Có thể làm tính năng "Rút tiền" sau, giờ cộng ảo vào ví thợ hoặc giữ ở ví Admin chờ thanh toán)
+    // Ở đây mình sẽ tạm cộng luôn cho Thợ để demo cho vui (Thực tế nên giữ lại 10-20% phí sàn)
+    const provider = await User.findById(service.user._id);
+    if (provider) {
+      provider.walletBalance = (provider.walletBalance || 0) + price;
+      await provider.save();
+
+      // Tạo log nhận tiền cho thợ
+      await Transaction.create({
+        user: provider._id,
+        amount: price,
+        type: "deposit", // Thợ nhận được tiền coi như nạp
+        status: "completed",
+        paymentMethod: "wallet",
+        description: `Nhận thanh toán từ khách ${buyer.name} cho dịch vụ ${service.name}`,
+      });
+    }
+
+    // 7. TẠO BOOKING
     const booking = await Booking.create({
-      user: req.user._id, // 👈 SỬA: Dùng _id thay vì id để đảm bảo chuẩn ObjectId
-      provider: service.user,
+      user: req.user.id,
       service: serviceId,
-      date,
-      note,
+      provider: service.user._id, // ID của thợ
+      date: date || Date.now(),
+      status: "pending", // Đợi thợ xác nhận (nhưng tiền đã trừ)
+      note: note,
+      price: price, // Lưu giá tại thời điểm đặt (đề phòng thợ tăng giá sau này)
     });
 
     res.status(201).json({
       success: true,
+      message: "Đặt lịch & Thanh toán thành công!",
       data: booking,
     });
   } catch (error) {
@@ -34,84 +83,27 @@ exports.createBooking = async (req, res, next) => {
   }
 };
 
-// @desc    Lấy danh sách đơn hàng
+// ... (Giữ nguyên các hàm getBookings, updateBookingStatus cũ của bạn ở dưới nếu có)
+// Nếu bạn chưa có, mình viết luôn hàm lấy danh sách đơn giản:
+
 exports.getBookings = async (req, res, next) => {
   try {
-    let query;
+    // Nếu là user thường: Xem đơn mình đặt
+    // Nếu là provider: Xem đơn người ta đặt mình
+    let query = { user: req.user.id };
     if (req.user.role === "provider") {
-      query = Booking.find({ provider: req.user.id });
-    } else {
-      query = Booking.find({ user: req.user.id });
+      query = { provider: req.user.id };
     }
 
-    const bookings = await query
-      .populate({ path: "service", select: "title price images priceUnit" })
-      .populate({ path: "user", select: "name phone avatar email" })
-      .populate({ path: "provider", select: "name phone avatar email" })
+    const bookings = await Booking.find(query)
+      .populate("service", "name price image")
+      .populate("user", "name email phone") // Lấy thông tin khách
+      .populate("provider", "name email phone") // Lấy thông tin thợ
       .sort("-createdAt");
 
-    res.status(200).json({
-      success: true,
-      count: bookings.length,
-      data: bookings,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Cập nhật trạng thái đơn hàng
-exports.updateBookingStatus = async (req, res, next) => {
-  try {
-    const { status } = req.body;
-    let booking = await Booking.findById(req.params.id);
-
-    if (!booking) {
-      res.status(404);
-      throw new Error("Không tìm thấy đơn hàng");
-    }
-
-    // Kiểm tra quyền (Provider hoặc Admin)
-    if (
-      booking.provider.toString() !== req.user.id &&
-      req.user.role !== "admin"
-    ) {
-      res.status(403);
-      throw new Error("Bạn không có quyền xử lý đơn hàng này");
-    }
-
-    booking.status = status;
-    await booking.save();
-
-    res.status(200).json({
-      success: true,
-      data: booking,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Xóa đơn hàng
-exports.deleteBooking = async (req, res, next) => {
-  try {
-    const booking = await Booking.findById(req.params.id);
-    if (!booking) {
-      res.status(404);
-      throw new Error("Không tìm thấy đơn hàng");
-    }
-
-    if (
-      booking.user.toString() !== req.user.id &&
-      booking.provider.toString() !== req.user.id &&
-      req.user.role !== "admin"
-    ) {
-      res.status(401);
-      throw new Error("Bạn không có quyền xóa đơn này");
-    }
-
-    await booking.deleteOne();
-    res.status(200).json({ success: true, data: {} });
+    res
+      .status(200)
+      .json({ success: true, count: bookings.length, data: bookings });
   } catch (error) {
     next(error);
   }
