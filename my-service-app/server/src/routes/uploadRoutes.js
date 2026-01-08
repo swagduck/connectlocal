@@ -1,47 +1,25 @@
 const express = require("express");
 const router = express.Router();
-const multer = require("multer");
-const path = require("path");
-
-// Cấu hình nơi lưu và tên file
-const storage = multer.diskStorage({
-  destination(req, file, cb) {
-    cb(null, "uploads/"); // Lưu vào thư mục uploads ở root server
-  },
-  filename(req, file, cb) {
-    // Đặt tên file: fieldname-thời_gian.đuôi_file (để tránh trùng tên)
-    cb(
-      null,
-      `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`
-    );
-  },
-});
-
-// Kiểm tra định dạng file (chỉ cho up ảnh)
-function checkFileType(file, cb) {
-  const filetypes = /jpg|jpeg|png/;
-  const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = filetypes.test(file.mimetype);
-
-  if (extname && mimetype) {
-    return cb(null, true);
-  } else {
-    cb("Lỗi: Chỉ chấp nhận file ảnh (jpg, jpeg, png)!");
-  }
-}
-
-const upload = multer({
-  storage,
-  fileFilter: function (req, file, cb) {
-    checkFileType(file, cb);
-  },
-});
+// 👇 Import file cấu hình Cloudinary bạn đã tạo ở bước trước
+const upload = require("../config/cloudinary"); 
 
 // Route Upload: POST /api/upload
+// Sử dụng middleware upload.single("image") từ config Cloudinary
 router.post("/", upload.single("image"), (req, res) => {
-  // Trả về đường dẫn file để Frontend lưu vào DB
-  // Ví dụ: /uploads/image-123456789.jpg
-  res.send(`/${req.file.path.replace(/\\/g, "/")}`);
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "Chưa chọn file nào!" });
+    }
+
+    // Cloudinary sẽ trả về đường dẫn ảnh online trong req.file.path
+    res.status(200).json({
+      success: true,
+      url: req.file.path, // Link ảnh https://...
+    });
+  } catch (error) {
+    console.error("Lỗi upload:", error); // Log lỗi ra để dễ debug
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 module.exports = router;

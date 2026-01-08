@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
-const { notFound, errorHandler } = require("./middleware/errorMiddleware"); // <-- Import file vừa tạo
+const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
 // Import Routes
 const authRoutes = require("./routes/authRoutes");
@@ -9,7 +9,9 @@ const serviceRoutes = require("./routes/serviceRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const requestRoutes = require("./routes/requestRoutes");
 const adminRoutes = require("./routes/adminRoutes");
-const chatRoutes = require("./routes/chatRoutes"); // <-- Đã hoạt động ngon lành
+const chatRoutes = require("./routes/chatRoutes");
+// 👇 1. THÊM DÒNG NÀY (Bạn đang thiếu dòng này)
+const uploadRoutes = require("./routes/uploadRoutes"); 
 
 const app = express();
 
@@ -27,9 +29,11 @@ app.use("/api/services", serviceRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/requests", requestRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api/chat", chatRoutes); // <-- Gắn chat vào đây
+app.use("/api/chat", chatRoutes);
+// 👇 2. THÊM DÒNG NÀY (Server chưa mở cổng upload nên bị lỗi)
+app.use("/api/upload", uploadRoutes);
 
-// Error Handling (Middleware xử lý lỗi)
+// Error Handling
 app.use(notFound);
 app.use(errorHandler);
 
