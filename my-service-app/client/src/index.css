@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Thêm đoạn này để đảm bảo trang luôn full màn hình trắng */
+body {
+  background-color: #f9fafb; /* Màu xám rất nhạt cho dịu mắt */
+  width: 100%;
+  margin: 0;
+  display: block; /* Quan trọng: Ghi đè display: flex mặc định của Vite */
+}

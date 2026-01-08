@@ -1,0 +1,97 @@
+import { createContext, useState, useEffect } from 'react';
+import api from '../services/api';
+import { toast } from 'react-hot-toast';
+
+export const AuthContext = createContext();
+
+export const AuthProvider = ({ children }) => {
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    // Kiểm tra đăng nhập khi F5
+    useEffect(() => {
+        const checkLoggedIn = async () => {
+            const token = localStorage.getItem('token');
+            if (token) {
+                try {
+                    // Lấy lại info mới nhất từ server thay vì tin tưởng localStorage cũ
+                    const res = await api.get('/auth/me');
+                    setUser(res.data.data);
+                } catch (error) {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('userInfo');
+                }
+            }
+            setLoading(false);
+        };
+        checkLoggedIn();
+    }, []);
+
+    const login = async (email, password) => {
+        try {
+            const res = await api.post('/auth/login', { email, password });
+            localStorage.setItem('token', res.data.token);
+            // Chuẩn hóa dữ liệu user để lưu (bỏ token thừa)
+            const userData = { ...res.data };
+            delete userData.success;
+            delete userData.token;
+            
+            localStorage.setItem('userInfo', JSON.stringify(userData));
+            setUser(userData);
+            toast.success('Đăng nhập thành công!');
+            return true;
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Đăng nhập thất bại');
+            return false;
+        }
+    };
+
+    const register = async (userData) => {
+        try {
+            const res = await api.post('/auth/register', userData);
+            localStorage.setItem('token', res.data.token);
+            
+            const newUserData = { ...res.data };
+            delete newUserData.success;
+            delete newUserData.token;
+
+            localStorage.setItem('userInfo', JSON.stringify(newUserData));
+            setUser(newUserData);
+            toast.success('Đăng ký thành công!');
+            return true;
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Đăng ký thất bại');
+            return false;
+        }
+    };
+
+    const logout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('userInfo');
+        setUser(null);
+        toast.success('Đã đăng xuất');
+    };
+
+    // Hàm cập nhật hồ sơ mới
+    const updateUser = async (updatedData) => {
+        try {
+            const res = await api.put('/auth/updatedetails', updatedData);
+            
+            // Cập nhật lại localStorage và State
+            localStorage.setItem('userInfo', JSON.stringify(res.data.data));
+            setUser(res.data.data);
+            
+            toast.success('Cập nhật hồ sơ thành công!');
+            return true;
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Lỗi cập nhật');
+            return false;
+        }
+    };
+
+    return (
+        <AuthContext.Provider value={{ user, login, register, logout, loading, updateUser }}>
+            {children}
+        </AuthContext.Provider>
+    );
+};
