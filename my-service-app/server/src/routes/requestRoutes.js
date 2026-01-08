@@ -4,23 +4,17 @@ const {
   createRequest,
   getRequests,
   deleteRequest,
-  getMyRequests, // <-- Mới
-  applyRequest, // <-- Mới
-  chooseProvider, // <-- Mới
+  getRequestById, // 👈 Cần import hàm này vào
 } = require("../controllers/requestController");
 const { protect } = require("../middleware/authMiddleware");
 
-router.route("/").get(getRequests).post(protect, createRequest);
+// Route cho /api/requests
+router.route("/").post(protect, createRequest).get(getRequests);
 
-// Route lấy danh sách yêu cầu của riêng mình (Khách quản lý)
-router.get("/my-requests", protect, getMyRequests);
-
-router.route("/:id").delete(protect, deleteRequest);
-
-// Thợ ứng tuyển
-router.put("/:id/apply", protect, applyRequest);
-
-// Khách chọn thợ
-router.put("/:id/choose", protect, chooseProvider);
+// Route cho /api/requests/:id
+router
+  .route("/:id")
+  .get(getRequestById) // 👈 Dòng này gây lỗi nếu getRequestById bị thiếu
+  .delete(protect, deleteRequest);
 
 module.exports = router;

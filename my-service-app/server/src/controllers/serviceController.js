@@ -1,115 +1,108 @@
 const Service = require("../models/Service");
 
-// @desc    Lấy tất cả dịch vụ (có lọc & tìm kiếm)
-// @route   GET /api/services
-// @access  Public
-exports.getServices = async (req, res, next) => {
+// @desc    Tạo dịch vụ mới (Full option)
+exports.createService = async (req, res, next) => {
   try {
-    const reqQuery = { ...req.query };
+    const {
+      title,
+      description,
+      category,
+      price,
+      priceUnit,
+      duration,
+      warranty,
+      address,
+      images,
+    } = req.body;
 
-    // Xử lý Tìm kiếm từ khóa
-    if (req.query.keyword) {
-      reqQuery.title = { $regex: req.query.keyword, $options: "i" };
+    // Validate các trường bắt buộc
+    if (!title || !category || !price || !address) {
+      res.status(400);
+      throw new Error("Vui lòng nhập đủ: Tên, Danh mục, Giá và Địa chỉ");
     }
 
-    const removeFields = ["select", "sort", "page", "limit", "keyword"];
-    removeFields.forEach((param) => delete reqQuery[param]);
-
-    let query = Service.find(reqQuery).populate({
-      path: "user",
-      select: "name avatar rating reviewCount",
+    const service = await Service.create({
+      user: req.user.id,
+      title,
+      description,
+      category,
+      price: Number(price),
+      priceUnit: priceUnit || "lần", // Mặc định
+      duration: duration || "Thỏa thuận", // Mặc định
+      warranty: warranty || "Không", // Mặc định
+      location: {
+        address: address, // Lưu vào object location
+        city: "Hồ Chí Minh", // Tạm thời hardcode hoặc lấy từ client gửi lên
+      },
+      images: images || [],
     });
 
-    if (req.query.sort) {
-      const sortBy = req.query.sort.split(",").join(" ");
-      query = query.sort(sortBy);
-    } else {
-      query = query.sort("-createdAt");
-    }
-
-    const services = await query;
-
-    res.status(200).json({
-      success: true,
-      count: services.length,
-      data: services,
-    });
+    res.status(201).json({ success: true, data: service });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Tạo dịch vụ mới
-// @route   POST /api/services
-// @access  Private (Chỉ Provider)
-exports.createService = async (req, res, next) => {
+// @desc    Lấy danh sách dịch vụ (Tìm kiếm & Lọc)
+exports.getServices = async (req, res, next) => {
   try {
-    req.body.user = req.user.id;
+    const { keyword, category } = req.query;
+    let query = {};
 
-    if (!req.body.location && req.user.location) {
-      req.body.location = req.user.location;
+    if (keyword) {
+      query.title = { $regex: keyword, $options: "i" };
+    }
+    if (category) {
+      query.category = category;
     }
 
-    const service = await Service.create(req.body);
+    const services = await Service.find(query)
+      .populate("user", "name avatar")
+      .sort("-createdAt");
 
-    res.status(201).json({
-      success: true,
-      data: service,
-    });
+    res
+      .status(200)
+      .json({ success: true, count: services.length, data: services });
   } catch (error) {
     next(error);
   }
 };
 
 // @desc    Lấy chi tiết 1 dịch vụ
-// @route   GET /api/services/:id
-// @access  Public
 exports.getServiceById = async (req, res, next) => {
   try {
-    const service = await Service.findById(req.params.id).populate({
-      path: "user",
-      select: "name email phone avatar rating reviewCount",
-    });
+    const service = await Service.findById(req.params.id).populate(
+      "user",
+      "name avatar email phone rating reviewCount"
+    );
 
     if (!service) {
       res.status(404);
-      throw new Error("Không tìm thấy dịch vụ này");
+      throw new Error("Không tìm thấy dịch vụ");
     }
-
-    res.status(200).json({
-      success: true,
-      data: service,
-    });
+    res.status(200).json({ success: true, data: service });
   } catch (error) {
     next(error);
   }
 };
 
 // @desc    Xóa dịch vụ
-// @route   DELETE /api/services/:id
-// @access  Private (Chỉ chủ bài viết hoặc Admin)
 exports.deleteService = async (req, res, next) => {
   try {
     const service = await Service.findById(req.params.id);
-
     if (!service) {
       res.status(404);
-      throw new Error("Không tìm thấy dịch vụ");
+      throw new Error("Dịch vụ không tồn tại");
     }
 
-    // Kiểm tra quyền: Chỉ người tạo ra dịch vụ mới được xóa (hoặc admin)
-    // Lưu ý: service.user là object ID, cần toString() để so sánh
+    // Check quyền
     if (service.user.toString() !== req.user.id && req.user.role !== "admin") {
       res.status(401);
-      throw new Error("Bạn không có quyền xóa dịch vụ này");
+      throw new Error("Bạn không sở hữu dịch vụ này");
     }
 
-    await service.deleteOne(); // Xóa khỏi database
-
-    res.status(200).json({
-      success: true,
-      data: {},
-    });
+    await service.deleteOne();
+    res.status(200).json({ success: true, message: "Đã xóa dịch vụ" });
   } catch (error) {
     next(error);
   }

@@ -1,7 +1,7 @@
 import { useEffect, useState, useContext } from 'react';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
-import { Calendar, Clock, User, CheckCircle, XCircle, Trash2 } from 'lucide-react'; // Import Trash2
+import { Calendar, Clock, User, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 
@@ -28,10 +28,17 @@ const MyBookings = () => {
 
     const handleUpdateStatus = async (id, newStatus) => {
         try {
-            if(!window.confirm(`Bạn chắc chắn muốn chuyển trạng thái sang "${getStatusText(newStatus)}"?`)) return;
+            // Xác nhận trước khi hủy
+            const actionText = newStatus === 'cancelled' ? 'HỦY' : getStatusText(newStatus);
+            if(!window.confirm(`Bạn có chắc chắn muốn ${actionText} đơn hàng này không?`)) return;
 
             await api.put(`/bookings/${id}`, { status: newStatus });
-            toast.success("Cập nhật trạng thái thành công!");
+            
+            if (newStatus === 'cancelled') {
+                toast.success("Đã hủy đơn và hoàn tiền cho khách!");
+            } else {
+                toast.success("Cập nhật trạng thái thành công!");
+            }
             
             setBookings(bookings.map(b => 
                 b._id === id ? { ...b, status: newStatus } : b

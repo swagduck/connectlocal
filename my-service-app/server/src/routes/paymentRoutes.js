@@ -4,16 +4,15 @@ const {
   createPayment,
   paymentCallback,
   getTransactions,
+  deleteTransaction, // 👈 Nhớ import thêm hàm này
 } = require("../controllers/paymentController");
 const { protect } = require("../middleware/authMiddleware");
 
-// Route nạp tiền (Cần đăng nhập)
 router.post("/create-payment", protect, createPayment);
-
-// Route lịch sử giao dịch
 router.get("/history", protect, getTransactions);
-
-// Route Callback (MoMo gọi vào, không cần protect jwt nhưng cần check signature nếu làm kỹ)
 router.post("/callback", paymentCallback);
+
+// 👇 Route Xóa giao dịch
+router.delete("/:id", protect, deleteTransaction);
 
 module.exports = router;

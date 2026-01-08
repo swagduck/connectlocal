@@ -1,27 +1,18 @@
 const express = require("express");
 const router = express.Router();
-
 const {
-  getServices,
   createService,
+  getServices,
   getServiceById,
-  deleteService, // <-- Import thêm hàm này
+  deleteService,
+  // updateService (nếu bạn làm thêm hàm update sau này)
 } = require("../controllers/serviceController");
+const { protect } = require("../middleware/authMiddleware");
 
-const { protect, authorize } = require("../middleware/authMiddleware");
+// Route lấy tất cả & tạo mới
+router.route("/").get(getServices).post(protect, createService); // Cần đăng nhập mới được tạo
 
-// Import Review Router
-const reviewRouter = require("./reviewRoutes");
-
-// Reroute sang reviewRouter
-router.use("/:serviceId/reviews", reviewRouter);
-
-// Các route chính
-router
-  .route("/")
-  .get(getServices)
-  .post(protect, authorize("provider", "admin"), createService);
-
-router.route("/:id").get(getServiceById).delete(protect, deleteService); // <-- Thêm dòng này: Cần đăng nhập mới xóa được
+// Route lấy chi tiết & xóa
+router.route("/:id").get(getServiceById).delete(protect, deleteService); // Cần đăng nhập mới được xóa
 
 module.exports = router;
