@@ -1,207 +1,188 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { Link } from 'react-router-dom';
-import { Search, MapPin, Clock, DollarSign, Calendar, Briefcase, Filter } from 'lucide-react';
+import api from '../services/api'; // Sử dụng api instance chuẩn
+import { Link, useNavigate } from 'react-router-dom';
+import { Search, MapPin, Clock, DollarSign, Calendar, MessageCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import api from '../services/api'; // Sử dụng api config sẵn của bạn
 import { AuthContext } from '../context/AuthContext';
 
 const FindJobs = () => {
-    const [requests, setRequests] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [filters, setFilters] = useState({
-        search: '',
-        category: '',
-        minPrice: '',
-        maxPrice: ''
-    });
+  const { user } = useContext(AuthContext);
+  const navigate = useNavigate();
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Bộ lọc
+  const [filters, setFilters] = useState({
+    search: '', category: '', minPrice: '', maxPrice: ''
+  });
 
-    const { user } = useContext(AuthContext);
+  useEffect(() => {
+    fetchRequests();
+  }, [filters]);
 
-    useEffect(() => {
-        fetchRequests();
-    }, [filters]);
+  const fetchRequests = async () => {
+    try {
+      // Tạo query string từ object filters
+      const params = new URLSearchParams();
+      if(filters.search) params.append('search', filters.search);
+      if(filters.category) params.append('category', filters.category);
+      if(filters.minPrice) params.append('minPrice', filters.minPrice);
+      if(filters.maxPrice) params.append('maxPrice', filters.maxPrice);
 
-    const fetchRequests = async () => {
-        try {
-            const query = new URLSearchParams(filters).toString();
-            const res = await api.get(`/requests?${query}`);
+      const res = await api.get(`/requests?${params.toString()}`);
+      setRequests(res.data.data);
+    } catch (error) {
+      console.error("Lỗi tải yêu cầu:", error);
+      toast.error("Không thể tải danh sách việc làm");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            // 👇 QUAN TRỌNG: Sửa lỗi map bằng cách lấy đúng res.data.data
-            setRequests(res.data.data || []);
+  const handleFilterChange = (e) => {
+    setFilters({ ...filters, [e.target.name]: e.target.value });
+  };
 
-        } catch (error) {
-            console.error("Lỗi tải yêu cầu:", error);
-            toast.error("Không thể tải danh sách việc làm");
-        } finally {
-            setLoading(false);
-        }
-    };
+  // 👇 HÀM XỬ LÝ KHI BẤM "TRAO ĐỔI NGAY"
+  const handleStartChat = async (targetUserId) => {
+      if (!user) {
+          toast.error("Vui lòng đăng nhập để chat!");
+          return navigate('/login');
+      }
+      try {
+          // Gọi API tạo/lấy phòng chat
+          const res = await api.post('/chat', { userId: targetUserId });
+          // Chuyển hướng sang trang Chat (có thể truyền state để mở đúng tab chat)
+          navigate('/chat', { state: { conversation: res.data } });
+      } catch (error) {
+          toast.error("Lỗi kết nối chat");
+      }
+  };
 
-    const handleFilterChange = (e) => {
-        setFilters({ ...filters, [e.target.name]: e.target.value });
-    };
+  return (
+    <div className="container mx-auto px-4 py-8 min-h-screen bg-gray-50">
+      <div className="text-center mb-10">
+        <h1 className="text-4xl font-bold text-gray-800 mb-3">💼 Việc Tìm Người</h1>
+        <p className="text-gray-600 text-lg">Hàng trăm cơ hội việc làm mới mỗi ngày dành cho bạn</p>
+      </div>
 
-    // Hàm xử lý ứng tuyển
-    const handleApply = async (id) => {
-        try {
-            await api.put(`/requests/${id}/apply`);
-            toast.success("Đã ứng tuyển thành công! Hãy chờ khách hàng liên hệ.");
-
-            // Cập nhật giao diện ngay lập tức (thêm user id vào mảng applicants)
-            setRequests(requests.map(req =>
-                req._id === id ? { ...req, applicants: [...(req.applicants || []), user._id] } : req
-            ));
-        } catch (error) {
-            toast.error(error.response?.data?.message || "Lỗi khi ứng tuyển");
-        }
-    };
-
-    return (
-        <div className="container mx-auto px-4 py-8 min-h-screen bg-gray-50">
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold text-gray-800 mb-2">Việc tìm người 🛠️</h1>
-                <p className="text-gray-600">Tìm kiếm các yêu cầu công việc mới nhất và ứng tuyển ngay.</p>
-            </div>
-
-            {/* --- BỘ LỌC TÌM KIẾM --- */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-8 grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="relative">
-                    <Search className="absolute left-3 top-3 text-gray-400" size={20} />
-                    <input
-                        type="text"
-                        name="search"
-                        placeholder="Tìm công việc..."
-                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                        onChange={handleFilterChange}
-                    />
-                </div>
-
-                <select
-                    name="category"
-                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                    onChange={handleFilterChange}
-                >
-                    <option value="">Tất cả danh mục</option>
-                    <option value="Sửa chữa">Sửa chữa</option>
-                    <option value="Dọn dẹp">Dọn dẹp</option>
-                    <option value="Vận chuyển">Vận chuyển</option>
-                    <option value="Điện nước">Điện nước</option>
-                </select>
-
+      {/* Bộ lọc tìm kiếm */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-10">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="relative col-span-1 md:col-span-2">
+                <Search className="absolute left-3 top-3.5 text-gray-400" size={20} />
                 <input
-                    type="number"
-                    name="minPrice"
-                    placeholder="Giá thấp nhất"
-                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    onChange={handleFilterChange}
-                />
-
-                <input
-                    type="number"
-                    name="maxPrice"
-                    placeholder="Giá cao nhất"
-                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    type="text" name="search"
+                    placeholder="Tìm theo tên công việc..."
+                    className="w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
                     onChange={handleFilterChange}
                 />
             </div>
+            
+            <select
+                name="category"
+                className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                onChange={handleFilterChange}
+            >
+                <option value="">Tất cả danh mục</option>
+                <option value="Điện nước">Điện nước</option>
+                <option value="Sửa chữa nhà">Sửa chữa nhà</option>
+                <option value="Vệ sinh">Vệ sinh</option>
+                <option value="Vận chuyển">Vận chuyển</option>
+                <option value="Gia sư">Gia sư</option>
+            </select>
 
-            {/* --- DANH SÁCH YÊU CẦU --- */}
-            {loading ? (
-                <div className="text-center py-12">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                </div>
-            ) : requests.length === 0 ? (
-                <div className="text-center py-12 bg-white rounded-xl shadow-sm">
-                    <p className="text-gray-500 text-lg">Chưa có yêu cầu nào phù hợp.</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {requests.map((req) => {
-                        // Kiểm tra xem user hiện tại đã ứng tuyển bài này chưa
-                        const isApplied = user && req.applicants && req.applicants.includes(user._id);
-                        // Kiểm tra xem bài này có phải của chính mình không
-                        const isMyRequest = user && req.user?._id === user._id;
+            <div className="flex gap-2">
+                <input type="number" name="minPrice" placeholder="Min Giá" className="w-1/2 p-3 border rounded-xl outline-none" onChange={handleFilterChange}/>
+                <input type="number" name="maxPrice" placeholder="Max Giá" className="w-1/2 p-3 border rounded-xl outline-none" onChange={handleFilterChange}/>
+            </div>
+          </div>
+      </div>
 
-                        return (
-                            <div key={req._id} className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition duration-300 flex flex-col">
-                                <div className="p-5 flex-grow">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                                            {req.category}
-                                        </span>
-                                        <span className="text-gray-500 text-sm flex items-center gap-1">
-                                            <Clock size={14} />
-                                            {new Date(req.createdAt).toLocaleDateString('vi-VN')}
-                                        </span>
-                                    </div>
-
-                                    <h3 className="text-xl font-bold text-gray-800 mb-2 line-clamp-2">{req.title}</h3>
-                                    <p className="text-gray-600 text-sm mb-4 line-clamp-3">{req.description}</p>
-
-                                    <div className="space-y-2 text-sm text-gray-500 mb-4">
-                                        <div className="flex items-center gap-2">
-                                            <DollarSign size={16} className="text-green-600" />
-                                            <span className="font-semibold text-green-700">
-                                                {req.budget ? req.budget.toLocaleString() + ' VNĐ' : 'Thỏa thuận'}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <MapPin size={16} />
-                                            <span>{req.address || 'Hồ Chí Minh'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Calendar size={16} />
-                                            <span>Hạn chót: {req.deadline ? new Date(req.deadline).toLocaleDateString('vi-VN') : 'Sớm nhất có thể'}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="border-t border-gray-100 p-4 bg-gray-50 rounded-b-xl flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <img
-                                            src={req.user?.avatar || "https://ui-avatars.com/api/?background=random&name=" + (req.user?.name || "User")}
-                                            alt={req.user?.name}
-                                            className="w-9 h-9 rounded-full object-cover"
-                                        />
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-medium text-gray-900">{req.user?.name || "Người dùng ẩn"}</span>
-                                            {/* 👇 ĐÃ SỬA CHÍNH TẢ: KHÁCH */}
-                                            <span className="text-xs text-gray-500">
-                                                {req.user?.role === 'provider' ? 'Thợ' : 'Khách'}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Logic hiển thị nút bấm */}
-                                    {user?.role === 'provider' ? (
-                                        isApplied ? (
-                                            <button disabled className="bg-gray-200 text-gray-500 px-3 py-1.5 rounded-lg text-sm font-medium cursor-not-allowed">
-                                                Đã ứng tuyển
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() => handleApply(req._id)}
-                                                className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition flex items-center gap-1"
-                                            >
-                                                <Briefcase size={14} /> Ứng tuyển
-                                            </button>
-                                        )
-                                    ) : (
-                                        // Nếu là Khách (hoặc chính chủ bài đăng)
-                                        isMyRequest ? (
-                                            <span className="text-xs font-bold text-orange-500 bg-orange-100 px-2 py-1 rounded">Bài của bạn</span>
-                                        ) : (
-                                            <span className="text-gray-400 text-xs italic">Dành cho Thợ</span>
-                                        )
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
+      {/* Danh sách yêu cầu */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1,2,3,4,5,6].map(i => <div key={i} className="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>)}
         </div>
-    );
+      ) : requests.length === 0 ? (
+        <div className="text-center py-20">
+            <img src="https://cdni.iconscout.com/illustration/premium/thumb/empty-state-2130362-1800926.png" alt="Empty" className="w-48 mx-auto opacity-50"/>
+            <p className="text-gray-500 mt-4 text-lg">Chưa có yêu cầu nào phù hợp.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {requests.map((req) => (
+            <div key={req._id} className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-lg transition duration-300 flex flex-col group">
+              <div className="p-6 flex-grow">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="bg-blue-50 text-blue-700 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide">
+                    {req.category}
+                  </span>
+                  <span className="text-gray-400 text-xs flex items-center gap-1">
+                    <Clock size={12} /> {new Date(req.createdAt).toLocaleDateString('vi-VN')}
+                  </span>
+                </div>
+
+                <h3 className="text-xl font-bold text-gray-800 mb-2 line-clamp-2 group-hover:text-blue-600 transition">
+                    {req.title}
+                </h3>
+                
+                {/* Ngân sách nổi bật */}
+                <div className="flex items-center gap-2 mb-4">
+                    <DollarSign size={20} className="text-green-600" />
+                    <span className="text-xl font-bold text-green-700">
+                        {req.budget ? req.budget.toLocaleString() : 'Thỏa thuận'} <span className="text-sm font-normal text-gray-500">VNĐ</span>
+                    </span>
+                </div>
+
+                <p className="text-gray-600 text-sm mb-6 line-clamp-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                    {req.description}
+                </p>
+
+                <div className="space-y-2 text-sm text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <MapPin size={16} className="text-red-400"/>
+                    <span className="truncate">{req.address}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Calendar size={16} className="text-orange-400"/>
+                    <span className="font-medium text-orange-600">
+                        Hạn chót: {new Date(req.deadline).toLocaleDateString('vi-VN')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Card */}
+              <div className="border-t border-gray-100 p-4 bg-gray-50 rounded-b-2xl flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <img 
+                    src={req.user?.avatar || "https://ui-avatars.com/api/?background=random&name=" + req.user?.name} 
+                    alt={req.user?.name}
+                    className="w-9 h-9 rounded-full border border-white shadow-sm"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-gray-900">{req.user?.name}</span>
+                    <span className="text-xs text-gray-500">Khách hàng</span>
+                  </div>
+                </div>
+                
+                {/* NÚT CHAT VỚI KHÁCH */}
+                {user?._id !== req.user?._id && (
+                    <button 
+                        onClick={() => handleStartChat(req.user?._id)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-md transition flex items-center gap-2"
+                    >
+                        <MessageCircle size={16} /> Trao đổi
+                    </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default FindJobs;

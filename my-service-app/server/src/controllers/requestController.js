@@ -1,72 +1,115 @@
 const Request = require("../models/Request");
+const Booking = require("../models/Booking");
+const Service = require("../models/Service");
 const User = require("../models/User");
 
 // @desc    Tạo yêu cầu mới
 exports.createRequest = async (req, res, next) => {
   try {
-    const { title, description, category, budget, deadline, address } =
-      req.body;
+    req.body.user = req.user.id;
 
-    if (!title || !description || !budget || !deadline || !address) {
-      res.status(400);
-      throw new Error("Vui lòng điền đầy đủ thông tin");
-    }
+    // Kiểm tra ví (nếu muốn)
+    // const user = await User.findById(req.user.id);
+    // if (user.walletBalance < req.body.budget) { ... }
 
-    if (new Date(deadline) < new Date()) {
-      res.status(400);
-      throw new Error("Hạn chót phải lớn hơn thời gian hiện tại");
-    }
-
-    const user = await User.findById(req.user.id);
-    if (user.walletBalance < Number(budget)) {
-      res.status(400);
-      throw new Error(
-        `Số dư ví không đủ! Bạn cần tối thiểu ${Number(
-          budget
-        ).toLocaleString()}đ.`
-      );
-    }
-
-    const request = await Request.create({
-      user: req.user.id,
-      title,
-      description,
-      category,
-      budget: Number(budget),
-      deadline,
-      address,
-      images: req.body.images || [],
-      status: "open",
-    });
-
+    const request = await Request.create(req.body);
     res.status(201).json({ success: true, data: request });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Lấy danh sách yêu cầu
+// @desc    Lấy danh sách yêu cầu (Status = open)
 exports.getRequests = async (req, res, next) => {
   try {
-    const { category, search, minPrice, maxPrice } = req.query;
-    let query = { status: "open" };
-
-    if (category) query.category = category;
-    if (search) query.title = { $regex: search, $options: "i" };
-
-    if (minPrice || maxPrice) {
-      query.budget = {};
-      if (minPrice) query.budget.$gte = Number(minPrice);
-      if (maxPrice) query.budget.$lte = Number(maxPrice);
-    }
-
-    const requests = await Request.find(query)
-      .populate("user", "name avatar role")
+    const requests = await Request.find({ status: "open" })
+      .populate("user", "name avatar phone role")
       .sort("-createdAt");
-
     res
       .status(200)
       .json({ success: true, count: requests.length, data: requests });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Lấy yêu cầu CỦA TÔI
+exports.getMyRequests = async (req, res, next) => {
+  try {
+    const requests = await Request.find({ user: req.user.id })
+      .populate("applicants", "name avatar rating reviewCount phone")
+      .sort("-createdAt");
+    res
+      .status(200)
+      .json({ success: true, count: requests.length, data: requests });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Thợ ứng tuyển
+exports.applyRequest = async (req, res, next) => {
+  try {
+    const request = await Request.findById(req.params.id);
+    if (!request) {
+      res.status(404);
+      throw new Error("Không tìm thấy yêu cầu");
+    }
+
+    // Check đã ứng tuyển chưa
+    if (request.applicants.includes(req.user.id)) {
+      res.status(400);
+      throw new Error("Bạn đã ứng tuyển đơn này rồi");
+    }
+
+    request.applicants.push(req.user.id);
+    await request.save();
+
+    res.status(200).json({ success: true, data: request });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Khách chọn thợ -> Tạo Booking
+exports.chooseProvider = async (req, res, next) => {
+  try {
+    const { providerId } = req.body;
+    const request = await Request.findById(req.params.id);
+
+    if (!request) {
+      res.status(404);
+      throw new Error("Không tìm thấy yêu cầu");
+    }
+    if (request.user.toString() !== req.user.id) {
+      res.status(401);
+      throw new Error("Không có quyền");
+    }
+
+    // Tìm service của thợ để link vào booking (trick)
+    const providerService = await Service.findOne({ user: providerId });
+    if (!providerService) {
+      res.status(400);
+      throw new Error("Thợ này chưa đăng dịch vụ nào nên không thể tạo đơn.");
+    }
+
+    // Tạo đơn hàng (Booking)
+    await Booking.create({
+      user: req.user.id,
+      provider: providerId,
+      service: providerService._id,
+      date: Date.now(),
+      note: `[Từ Yêu Cầu] ${request.title} - Ngân sách: ${request.budget}`,
+      price: request.budget,
+      status: "confirmed",
+    });
+
+    // Đóng yêu cầu
+    request.status = "assigned"; // Hoặc "closed"
+    request.applicants = [];
+    await request.save();
+
+    res.status(200).json({ success: true, message: "Đã chọn thợ thành công!" });
   } catch (error) {
     next(error);
   }
@@ -78,32 +121,29 @@ exports.deleteRequest = async (req, res, next) => {
     const request = await Request.findById(req.params.id);
     if (!request) {
       res.status(404);
-      throw new Error("Không tìm thấy yêu cầu");
+      throw new Error("Not found");
     }
     if (request.user.toString() !== req.user.id && req.user.role !== "admin") {
       res.status(401);
-      throw new Error("Không có quyền xóa bài này");
+      throw new Error("Not authorized");
     }
     await request.deleteOne();
-    res.status(200).json({ success: true, message: "Đã xóa yêu cầu" });
+    res.status(200).json({ success: true, data: {} });
   } catch (error) {
     next(error);
   }
 };
 
-// 👇 QUAN TRỌNG: Phải có hàm này thì route mới không lỗi
+// 👇 Đảm bảo hàm này có mặt nếu route /:id get dùng nó (hoặc xóa route get by id nếu không cần)
 exports.getRequestById = async (req, res, next) => {
   try {
-    const request = await Request.findById(req.params.id).populate(
-      "user",
-      "name avatar email phone"
-    );
+    const request = await Request.findById(req.params.id).populate("user");
     if (!request) {
       res.status(404);
-      throw new Error("Không tìm thấy yêu cầu");
+      throw new Error("Not found");
     }
     res.status(200).json({ success: true, data: request });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
   }
 };
