@@ -1,141 +1,166 @@
 import { useState, useEffect, useContext } from 'react';
-import { Star, Send } from 'lucide-react';
-import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
+import api from '../services/api';
+import { Star, MessageCircle, Reply, Lock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
-const ReviewSection = ({ serviceId, triggerRefresh }) => {
+const ReviewSection = ({ serviceId, providerId }) => {
     const { user } = useContext(AuthContext);
     const [reviews, setReviews] = useState([]);
     const [rating, setRating] = useState(5);
-    const [title, setTitle] = useState('');
-    const [text, setText] = useState('');
-    const [hover, setHover] = useState(0);
+    const [comment, setComment] = useState('');
+    const [replyText, setReplyText] = useState({});
+
+    // State kiểm tra quyền đánh giá
+    const [canReview, setCanReview] = useState(false);
 
     useEffect(() => {
-        if(serviceId) fetchReviews();
-    }, [serviceId]);
+        fetchReviews();
+        // Nếu là khách hàng thì kiểm tra xem đã mua đơn này chưa
+        if (user && user.role === 'customer') {
+            checkReviewPermission();
+        }
+    }, [serviceId, user]);
 
     const fetchReviews = async () => {
         try {
-            const res = await api.get(`/services/${serviceId}/reviews`);
-            setReviews(res.data.data);
+            const { data } = await api.get(`/reviews/service/${serviceId}`);
+            setReviews(data);
         } catch (error) {
             console.error("Lỗi tải review");
         }
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!user) {
-            toast.error("Vui lòng đăng nhập");
-            return;
-        }
-
+    const checkReviewPermission = async () => {
         try {
-            await api.post(`/services/${serviceId}/reviews`, {
-                title,
-                text,
-                rating
-            });
-            
-            toast.success("Cảm ơn bạn đã đánh giá!");
-            setTitle('');
-            setText('');
-            fetchReviews(); // Tải lại danh sách review
-            
-            // Gọi hàm từ trang cha để cập nhật lại điểm số trên đầu trang
-            if(triggerRefresh) triggerRefresh();
-            
+            const { data } = await api.get(`/reviews/check/${serviceId}`);
+            setCanReview(data.canReview);
         } catch (error) {
-            toast.error(error.response?.data?.message || "Lỗi: Có thể bạn chưa hoàn thành dịch vụ này");
+            console.error("Lỗi check quyền");
+        }
+    };
+
+    const submitReview = async (e) => {
+        e.preventDefault();
+        try {
+            // Backend tự xử lý việc Tạo mới hay Cập nhật
+            await api.post('/reviews', { rating, comment, serviceId });
+            toast.success('Đánh giá thành công!');
+            setComment('');
+            fetchReviews(); // Load lại danh sách để thấy review mới
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Lỗi khi gửi đánh giá');
+        }
+    };
+
+    const handleReply = async (reviewId) => {
+        try {
+            if (!replyText[reviewId]) return;
+            await api.put(`/reviews/${reviewId}/reply`, { reply: replyText[reviewId] });
+            toast.success('Đã gửi phản hồi');
+            fetchReviews();
+        } catch (error) {
+            toast.error('Không thể gửi phản hồi');
         }
     };
 
     return (
-        <div className="mt-8 pt-8 border-t border-gray-200">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Đánh giá từ khách hàng ({reviews.length})</h2>
+        <div className="mt-10 bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+            <h3 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                <MessageCircle className="text-blue-600" /> Đánh giá từ khách hàng
+            </h3>
 
-            {/* FORM REVIEW */}
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 mb-8">
-                <h3 className="font-bold text-lg mb-4">Viết đánh giá của bạn</h3>
-                <form onSubmit={handleSubmit}>
-                    <div className="flex gap-1 mb-4">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                            <button
-                                key={star}
-                                type="button"
-                                className="focus:outline-none transition transform hover:scale-110"
-                                onClick={() => setRating(star)}
-                                onMouseEnter={() => setHover(star)}
-                                onMouseLeave={() => setHover(rating)}
-                            >
-                                <Star 
-                                    size={28} 
-                                    fill={star <= (hover || rating) ? "#FBBF24" : "none"} 
-                                    color={star <= (hover || rating) ? "#FBBF24" : "#D1D5DB"}
+            {/* --- PHẦN FORM ĐÁNH GIÁ (LOGIC ẨN/HIỆN) --- */}
+            {user && user.role === 'customer' ? (
+                canReview ? (
+                    // 1. ĐƯỢC PHÉP ĐÁNH GIÁ (Đã hoàn thành đơn)
+                    <form onSubmit={submitReview} className="mb-10 bg-blue-50 p-4 rounded-lg animate-fade-in-up">
+                        <p className="font-semibold mb-2 text-blue-800">Chia sẻ trải nghiệm của bạn:</p>
+                        <div className="flex mb-4">
+                            {[1, 2, 3, 4, 5].map((num) => (
+                                <Star
+                                    key={num}
+                                    size={28}
+                                    className={`cursor-pointer transition ${num <= rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300 hover:text-yellow-200'}`}
+                                    onClick={() => setRating(num)}
                                 />
-                            </button>
-                        ))}
-                        <span className="ml-2 text-gray-600 font-medium pt-1">
-                            {rating === 5 ? 'Tuyệt vời' : rating === 4 ? 'Hài lòng' : rating === 3 ? 'Bình thường' : 'Tệ'}
-                        </span>
-                    </div>
-
-                    <input 
-                        type="text" 
-                        placeholder="Tiêu đề (Ví dụ: Thợ làm rất kỹ...)"
-                        className="w-full border p-3 rounded-lg mb-3 focus:outline-blue-500"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        required
-                    />
-
-                    <textarea 
-                        placeholder="Chia sẻ trải nghiệm của bạn (bắt buộc)..."
-                        rows="3"
-                        className="w-full border p-3 rounded-lg mb-3 focus:outline-blue-500"
-                        value={text}
-                        onChange={(e) => setText(e.target.value)}
-                        required
-                    ></textarea>
-
-                    <button className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2">
-                        <Send size={18} /> Gửi đánh giá
-                    </button>
-                </form>
-            </div>
-
-            {/* LIST REVIEWS */}
-            <div className="space-y-6">
-                {reviews.length === 0 ? (
-                    <p className="text-gray-500 italic">Chưa có đánh giá nào.</p>
+                            ))}
+                        </div>
+                        <textarea
+                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                            placeholder="Dịch vụ thế nào? Thợ có nhiệt tình không?..."
+                            value={comment}
+                            onChange={(e) => setComment(e.target.value)}
+                            required
+                        />
+                        <button className="mt-3 bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 transition shadow-md">
+                            Gửi / Cập nhật đánh giá
+                        </button>
+                    </form>
                 ) : (
-                    reviews.map((review) => (
-                        <div key={review._id} className="border-b pb-6 last:border-0">
-                            <div className="flex items-center gap-3 mb-2">
-                                <img 
-                                    src={review.user?.avatar || `https://ui-avatars.com/api/?name=${review.user?.name}`} 
-                                    className="w-10 h-10 rounded-full bg-gray-200"
+                    // 2. CHƯA ĐỦ ĐIỀU KIỆN
+                    <div className="mb-10 p-6 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-center text-gray-500">
+                        <Lock className="mx-auto mb-2 text-gray-400" size={24} />
+                        <p>Bạn cần sử dụng và <b>hoàn thành</b> dịch vụ này để viết đánh giá.</p>
+                    </div>
+                )
+            ) : null}
+
+            {/* --- DANH SÁCH REVIEW --- */}
+            <div className="space-y-6">
+                {reviews.length === 0 && <p className="text-gray-500 italic">Chưa có đánh giá nào.</p>}
+
+                {reviews.map((rev) => (
+                    <div key={rev._id} className="border-b pb-6 last:border-0">
+                        <div className="flex justify-between items-start mb-2">
+                            <div className="flex items-center gap-3">
+                                {/* Avatar người dùng hoặc mặc định */}
+                                <img
+                                    src={rev.user?.avatar || `https://ui-avatars.com/api/?name=${rev.user?.name || 'User'}`}
+                                    className="w-10 h-10 rounded-full border object-cover"
                                     alt="avatar"
                                 />
                                 <div>
-                                    <p className="font-bold text-gray-900">{review.user?.name}</p>
-                                    <div className="flex text-yellow-400 text-xs">
-                                        {[...Array(5)].map((_, i) => (
-                                            <Star key={i} size={14} fill={i < review.rating ? "currentColor" : "none"} color={i < review.rating ? "currentColor" : "#D1D5DB"} />
-                                        ))}
+                                    <p className="font-bold text-gray-800">{rev.user?.name || "Người dùng ẩn danh"}</p>
+                                    <div className="flex text-yellow-400">
+                                        {[...Array(rev.rating)].map((_, i) => <Star key={i} size={14} fill="currentColor" />)}
                                     </div>
                                 </div>
-                                <span className="ml-auto text-xs text-gray-400">
-                                    {new Date(review.createdAt).toLocaleDateString('vi-VN')}
-                                </span>
                             </div>
-                            <h4 className="font-bold text-gray-800 ml-14">{review.title}</h4>
-                            <p className="text-gray-600 ml-14 mt-1">{review.text}</p>
+                            <span className="text-gray-400 text-sm">{new Date(rev.updatedAt || rev.createdAt).toLocaleDateString('vi-VN')}</span>
                         </div>
-                    ))
-                )}
+                        <p className="text-gray-600 ml-14 whitespace-pre-line">{rev.comment}</p>
+
+                        {/* --- PHẦN PHẢN HỒI CỦA THỢ --- */}
+                        {rev.reply ? (
+                            // Nếu đã có phản hồi -> Hiển thị
+                            <div className="ml-14 mt-3 bg-gray-50 p-3 rounded-lg border-l-4 border-blue-400">
+                                <p className="text-xs font-bold text-blue-600 mb-1 flex items-center gap-1">
+                                    <Reply size={12} /> Phản hồi từ người bán
+                                </p>
+                                <p className="text-gray-700 text-sm italic">"{rev.reply}"</p>
+                            </div>
+                        ) : (
+                            // Nếu chưa có phản hồi VÀ người xem là chủ dịch vụ -> Hiện ô nhập
+                            user?._id === providerId && (
+                                <div className="ml-14 mt-3 flex gap-2 animate-fade-in">
+                                    <input
+                                        type="text"
+                                        placeholder="Nhập phản hồi cho khách..."
+                                        className="text-sm border rounded px-3 py-2 focus:border-blue-500 outline-none flex-1"
+                                        onChange={(e) => setReplyText({ ...replyText, [rev._id]: e.target.value })}
+                                    />
+                                    <button
+                                        onClick={() => handleReply(rev._id)}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold transition"
+                                    >
+                                        Gửi
+                                    </button>
+                                </div>
+                            )
+                        )}
+                    </div>
+                ))}
             </div>
         </div>
     );

@@ -1,7 +1,7 @@
 import { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { User, Mail, Phone, Camera, Save, Briefcase, Edit, X, MapPin } from 'lucide-react';
-import api from '../services/api'; 
+import api from '../services/api';
 import { toast } from 'react-hot-toast';
 import ServiceCard from '../components/ServiceCard';
 
@@ -56,6 +56,7 @@ const Profile = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
+    // 👇 Hàm này đã được sửa để hoạt động với Cloudinary
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -66,11 +67,18 @@ const Profile = () => {
 
         try {
             const config = { headers: { 'Content-Type': 'multipart/form-data' } };
+
+            // Gọi API upload
             const { data } = await api.post('/upload', formDataUpload, config);
-            const fullUrl = `http://localhost:5000${data}`; 
+
+            // Backend trả về: { success: true, url: "https://res.cloudinary..." }
+            // Lấy trực tiếp url từ data, KHÔNG nối thêm localhost
+            const fullUrl = data.url;
+
             setFormData((prev) => ({ ...prev, avatar: fullUrl }));
             toast.success('Tải ảnh xong! Bấm Lưu để hoàn tất.');
         } catch (error) {
+            console.error("Lỗi upload:", error);
             toast.error('Lỗi upload ảnh');
         } finally {
             setUploading(false);
@@ -90,7 +98,6 @@ const Profile = () => {
         setIsEditing(false);
     };
 
-    // Hàm helper để hiển thị tên vai trò cho đẹp
     const getRoleLabel = (role) => {
         if (role === 'admin') return 'Quản trị viên hệ thống';
         if (role === 'provider') return 'Nhà cung cấp dịch vụ';
@@ -102,7 +109,7 @@ const Profile = () => {
             <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100 mb-10">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 h-32 relative">
                     {!isEditing && (
-                        <button 
+                        <button
                             onClick={() => setIsEditing(true)}
                             className="absolute top-4 right-4 bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg flex items-center gap-2 transition backdrop-blur-sm"
                         >
@@ -114,9 +121,10 @@ const Profile = () => {
                 <div className="px-8 pb-8">
                     <div className="relative -mt-16 mb-6 flex justify-center">
                         <div className="relative group">
-                            <img 
-                                src={formData.avatar || `https://ui-avatars.com/api/?name=${formData.name}`} 
-                                alt="Profile" 
+                            {/* Hiển thị Avatar hoặc Avatar mặc định nếu chưa có */}
+                            <img
+                                src={formData.avatar || `https://ui-avatars.com/api/?name=${formData.name}`}
+                                alt="Profile"
                                 className={`w-32 h-32 rounded-full border-4 border-white shadow-md object-cover bg-white ${isEditing ? 'ring-2 ring-blue-400' : ''}`}
                             />
                             {isEditing && (
@@ -131,8 +139,7 @@ const Profile = () => {
                     </div>
 
                     <h1 className="text-3xl font-bold text-center text-gray-800 mb-1">{user?.name}</h1>
-                    
-                    {/* 👇 ĐÃ SỬA: Hiển thị đúng vai trò Admin */}
+
                     <p className="text-center text-gray-500 mb-8 uppercase font-bold tracking-wide text-xs">
                         {getRoleLabel(user?.role)}
                     </p>
@@ -174,14 +181,14 @@ const Profile = () => {
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                     <MapPin size={18} className={isEditing ? "text-blue-500" : "text-gray-400"} />
                                 </div>
-                                <input 
-                                    type="text" 
-                                    name="address" 
-                                    value={formData.address} 
-                                    onChange={handleChange} 
+                                <input
+                                    type="text"
+                                    name="address"
+                                    value={formData.address}
+                                    onChange={handleChange}
                                     disabled={!isEditing}
                                     placeholder="Ví dụ: Quận 1, TP.HCM"
-                                    className={`w-full pl-10 pr-4 py-3 border rounded-lg outline-none transition ${isEditing ? 'border-blue-300 focus:ring-2 focus:ring-blue-500 bg-white' : 'border-gray-200 bg-gray-50 text-gray-600'}`} 
+                                    className={`w-full pl-10 pr-4 py-3 border rounded-lg outline-none transition ${isEditing ? 'border-blue-300 focus:ring-2 focus:ring-blue-500 bg-white' : 'border-gray-200 bg-gray-50 text-gray-600'}`}
                                 />
                             </div>
                         </div>
@@ -200,7 +207,7 @@ const Profile = () => {
                 </div>
             </div>
 
-            {/* DỊCH VỤ CỦA TÔI */}
+            {/* DỊCH VỤ CỦA TÔI (Chỉ hiện nếu là Provider) */}
             {user?.role === 'provider' && (
                 <div className="max-w-6xl mx-auto">
                     <div className="flex items-center gap-3 mb-6">

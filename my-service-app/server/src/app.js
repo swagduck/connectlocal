@@ -10,8 +10,9 @@ const bookingRoutes = require("./routes/bookingRoutes");
 const requestRoutes = require("./routes/requestRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const chatRoutes = require("./routes/chatRoutes");
-// 👇 1. THÊM DÒNG NÀY (Bạn đang thiếu dòng này)
-const uploadRoutes = require("./routes/uploadRoutes"); 
+const uploadRoutes = require("./routes/uploadRoutes");
+// 👇 1. IMPORT REVIEW ROUTES
+const reviewRoutes = require("./routes/reviewRoutes"); 
 
 const app = express();
 
@@ -30,8 +31,9 @@ app.use("/api/bookings", bookingRoutes);
 app.use("/api/requests", requestRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/chat", chatRoutes);
-// 👇 2. THÊM DÒNG NÀY (Server chưa mở cổng upload nên bị lỗi)
 app.use("/api/upload", uploadRoutes);
+// 👇 2. ĐĂNG KÝ ROUTE REVIEW VÀO APP
+app.use("/api/reviews", reviewRoutes); 
 
 // Error Handling
 app.use(notFound);

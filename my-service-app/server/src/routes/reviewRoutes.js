@@ -1,11 +1,23 @@
 const express = require("express");
-
-// mergeParams: true là BẮT BUỘC để lấy được :serviceId từ router cha
-const router = express.Router({ mergeParams: true });
-
-const { getReviews, addReview } = require("../controllers/reviewController");
+const router = express.Router();
+const {
+  createReview,
+  getServiceReviews,
+  replyReview,
+  checkEligibility,
+} = require("../controllers/reviewController");
 const { protect } = require("../middleware/authMiddleware");
 
-router.route("/").get(getReviews).post(protect, addReview);
+// Route công khai: Lấy danh sách review
+router.get("/service/:serviceId", getServiceReviews);
+
+// Route bảo vệ: Tạo/Cập nhật review
+router.post("/", protect, createReview);
+
+// Route bảo vệ: Thợ trả lời review
+router.put("/:id/reply", protect, replyReview);
+
+// Route bảo vệ: Kiểm tra quyền review (để ẩn/hiện form)
+router.get("/check/:serviceId", protect, checkEligibility);
 
 module.exports = router;
