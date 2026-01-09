@@ -19,6 +19,18 @@ exports.createBooking = async (req, res, next) => {
       throw new Error("Bạn không thể tự đặt dịch vụ của chính mình");
     }
 
+    // Kiểm tra số dư ví của khách
+    const customer = await User.findById(req.user._id);
+    if (customer.walletBalance < service.price) {
+      res.status(400);
+      throw new Error("Số dư ví không đủ. Vui lòng nạp thêm tiền.");
+    }
+
+    // Trừ tiền từ ví khách
+    customer.walletBalance -= service.price;
+    await customer.save();
+
+    // Tạo booking
     const booking = await Booking.create({
       user: req.user._id,
       provider: service.user,
@@ -28,9 +40,22 @@ exports.createBooking = async (req, res, next) => {
       price: service.price, // Lưu giá tại thời điểm đặt
     });
 
+    // Tạo transaction ghi nhận thanh toán
+    await Transaction.create({
+      user: req.user._id,
+      amount: service.price,
+      type: "payment",
+      status: "completed",
+      description: `Thanh toán dịch vụ: ${service.title}`,
+      bookingId: booking._id
+    });
+
+    console.log(`💳 Đã trừ ${service.price}đ từ ví khách ${customer.name} cho dịch vụ ${service.title}`);
+
     res.status(201).json({
       success: true,
       data: booking,
+      message: `Đặt dịch vụ thành công! Đã trừ ${service.price.toLocaleString('vi-VN')}đ từ ví của bạn.`,
     });
   } catch (error) {
     next(error);
@@ -85,29 +110,47 @@ exports.updateBookingStatus = async (req, res, next) => {
       throw new Error("Bạn không có quyền xử lý đơn hàng này");
     }
 
-    // --- LOGIC HOÀN TIỀN (NẾU HỦY ĐƠN) ---
-    if (status === "cancelled" && booking.status !== "cancelled") {
-      const amount = booking.price || booking.service.price; // Lấy giá tiền
+    // --- LOGIC HOÀN TIỀN KHI THỢ HOÀN THÀNH CÔNG VIỆC ---
+    if (status === "completed" && booking.status !== "completed") {
+      const amount = booking.price || booking.service.price;
 
-      // 1. Trả lại tiền cho Khách
-      const customer = await User.findById(booking.user._id);
-      customer.walletBalance += amount;
-      await customer.save();
-
-      // 2. Trừ tiền của Thợ (vì lúc đặt đã cộng rồi)
+      // 1. Cộng tiền cho Thợ
       const provider = await User.findById(booking.provider);
       if (provider) {
-        provider.walletBalance -= amount;
+        provider.walletBalance += amount;
         await provider.save();
+        console.log(`✅ Đã cộng ${amount}đ cho thợ ${provider.name}`);
       }
 
-      // 3. Lưu lịch sử giao dịch hoàn tiền
+      // 2. Lưu lịch sử giao dịch
+      await Transaction.create({
+        user: provider._id,
+        amount: amount,
+        type: "earning",
+        status: "completed",
+        description: `Thu tiền từ hoàn thành dịch vụ: ${booking.service.title}`,
+        bookingId: booking._id
+      });
+    }
+
+    // --- LOGIC HOÀN TIỀN KHI HỦY ĐƠN ---
+    if (status === "cancelled" && booking.status !== "cancelled") {
+      const amount = booking.price || booking.service.price;
+
+      // 1. Trả lại tiền cho Khách
+      const customer = await User.findById(booking.user);
+      customer.walletBalance += amount;
+      await customer.save();
+      console.log(`✅ Đã hoàn ${amount}đ cho khách ${customer.name}`);
+
+      // 2. Lưu lịch sử giao dịch hoàn tiền
       await Transaction.create({
         user: customer._id,
         amount: amount,
         type: "refund",
         status: "completed",
         description: `Hoàn tiền do hủy đơn dịch vụ: ${booking.service.title}`,
+        bookingId: booking._id
       });
     }
 

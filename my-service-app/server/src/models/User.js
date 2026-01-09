@@ -43,6 +43,11 @@ const UserSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  // 👇 MỚI: Trạng thái bị khóa
+  banned: {
+    type: Boolean,
+    default: false,
+  },
   // Các trường dành riêng cho Thợ (Provider)
   rating: {
     type: Number,

@@ -8,7 +8,7 @@ import { toast } from 'react-hot-toast';
 const MyBookings = () => {
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(true);
-    const { user } = useContext(AuthContext);
+    const { user, refreshUser } = useContext(AuthContext);
 
     useEffect(() => {
         fetchBookings();
@@ -30,19 +30,22 @@ const MyBookings = () => {
         try {
             // Xác nhận trước khi hủy
             const actionText = newStatus === 'cancelled' ? 'HỦY' : getStatusText(newStatus);
-            if(!window.confirm(`Bạn có chắc chắn muốn ${actionText} đơn hàng này không?`)) return;
+            if (!window.confirm(`Bạn có chắc chắn muốn ${actionText} đơn hàng này không?`)) return;
 
             await api.put(`/bookings/${id}`, { status: newStatus });
-            
+
             if (newStatus === 'cancelled') {
                 toast.success("Đã hủy đơn và hoàn tiền cho khách!");
+            } else if (newStatus === 'completed') {
+                toast.success("🎉 Đã hoàn thành công việc! Tiền đã được chuyển vào ví của bạn.");
             } else {
                 toast.success("Cập nhật trạng thái thành công!");
             }
-            
-            setBookings(bookings.map(b => 
-                b._id === id ? { ...b, status: newStatus } : b
-            ));
+
+            // Refresh lại user data để cập nhật số dư ví
+            await refreshUser();
+            // Refresh lại danh sách để cập nhật số dư ví
+            fetchBookings();
         } catch (error) {
             toast.error(error.response?.data?.message || "Lỗi cập nhật");
         }
@@ -50,7 +53,7 @@ const MyBookings = () => {
 
     // Hàm XÓA ĐƠN HÀNG
     const handleDeleteBooking = async (id) => {
-        if(!window.confirm("Bạn có chắc chắn muốn xóa đơn này khỏi lịch sử không?")) return;
+        if (!window.confirm("Bạn có chắc chắn muốn xóa đơn này khỏi lịch sử không?")) return;
 
         try {
             await api.delete(`/bookings/${id}`);
@@ -99,9 +102,9 @@ const MyBookings = () => {
                 <div className="grid gap-6">
                     {bookings.map((booking) => (
                         <div key={booking._id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-6 hover:shadow-md transition relative group">
-                            
+
                             {/* NÚT XÓA ĐƠN (Nằm góc trên phải) */}
-                            <button 
+                            <button
                                 onClick={() => handleDeleteBooking(booking._id)}
                                 className="absolute top-4 right-4 text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition"
                                 title="Xóa đơn này"
@@ -110,9 +113,9 @@ const MyBookings = () => {
                             </button>
 
                             {/* Ảnh dịch vụ */}
-                            <img 
-                                src={booking.service?.images[0] || 'https://via.placeholder.com/150'} 
-                                alt="Service" 
+                            <img
+                                src={booking.service?.images[0] || 'https://via.placeholder.com/150'}
+                                alt="Service"
                                 className="w-full md:w-48 h-32 object-cover rounded-lg border"
                             />
 
@@ -136,13 +139,13 @@ const MyBookings = () => {
                                     </div>
                                     <div className="flex items-center">
                                         <Clock size={16} className="mr-2 text-blue-500" />
-                                        <span className="font-medium">{new Date(booking.date).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}</span>
+                                        <span className="font-medium">{new Date(booking.date).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
                                     </div>
-                                    
+
                                     <div className="flex items-center col-span-1 md:col-span-2 pt-2 border-t mt-2">
                                         <User size={16} className="mr-2 text-gray-500" />
                                         <span className="text-gray-700">
-                                            {user?.role === 'provider' 
+                                            {user?.role === 'provider'
                                                 ? <>Khách: <b>{booking.user?.name}</b> - 📞 {booking.user?.phone}</>
                                                 : <>Thợ: <b>{booking.provider?.name}</b></>
                                             }
@@ -161,13 +164,13 @@ const MyBookings = () => {
                                     <div className="flex gap-3 mt-4 pt-4 border-t">
                                         {booking.status === 'pending' && (
                                             <>
-                                                <button 
+                                                <button
                                                     onClick={() => handleUpdateStatus(booking._id, 'confirmed')}
                                                     className="flex items-center gap-1 bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition"
                                                 >
                                                     <CheckCircle size={18} /> Nhận đơn
                                                 </button>
-                                                <button 
+                                                <button
                                                     onClick={() => handleUpdateStatus(booking._id, 'cancelled')}
                                                     className="flex items-center gap-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 transition"
                                                 >
@@ -177,7 +180,7 @@ const MyBookings = () => {
                                         )}
 
                                         {booking.status === 'confirmed' && (
-                                            <button 
+                                            <button
                                                 onClick={() => handleUpdateStatus(booking._id, 'completed')}
                                                 className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition w-full justify-center"
                                             >

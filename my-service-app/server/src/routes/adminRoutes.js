@@ -8,6 +8,14 @@ const {
   deleteUser,
   getAllServices,
   getAllBookings,
+  adminUpdateBooking,
+  getAllRequests,
+  updateRequest,
+  deleteRequest,
+  banUser,
+  unbanUser,
+  getAllTransactions,
+  updateTransactionStatus,
 } = require("../controllers/adminController");
 
 // Import Middleware (Đảm bảo đường dẫn đúng)
@@ -22,8 +30,17 @@ router.use(authorize("admin"));
 router.get("/stats", getStats);
 router.get("/users", getAllUsers);
 router.delete("/users/:id", deleteUser);
+router.put("/users/:id/ban", banUser);
+router.put("/users/:id/unban", unbanUser);
 
 router.get("/services", getAllServices);
 router.get("/bookings", getAllBookings);
+router.put("/bookings/:id", adminUpdateBooking);
+router.get("/requests", getAllRequests);
+router.put("/requests/:id", updateRequest);
+router.delete("/requests/:id", deleteRequest);
+
+router.get("/transactions", getAllTransactions);
+router.put("/transactions/:id", updateTransactionStatus);
 
 module.exports = router;

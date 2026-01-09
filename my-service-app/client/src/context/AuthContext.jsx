@@ -16,7 +16,11 @@ export const AuthProvider = ({ children }) => {
                 try {
                     // Lấy lại info mới nhất từ server thay vì tin tưởng localStorage cũ
                     const res = await api.get('/auth/me');
-                    setUser(res.data.data);
+                    const userData = res.data.data;
+
+                    // Cập nhật lại localStorage với data mới nhất từ server
+                    localStorage.setItem('userInfo', JSON.stringify(userData));
+                    setUser(userData);
                 } catch (error) {
                     localStorage.removeItem('token');
                     localStorage.removeItem('userInfo');
@@ -35,7 +39,7 @@ export const AuthProvider = ({ children }) => {
             const userData = { ...res.data };
             delete userData.success;
             delete userData.token;
-            
+
             localStorage.setItem('userInfo', JSON.stringify(userData));
             setUser(userData);
             toast.success('Đăng nhập thành công!');
@@ -50,7 +54,7 @@ export const AuthProvider = ({ children }) => {
         try {
             const res = await api.post('/auth/register', userData);
             localStorage.setItem('token', res.data.token);
-            
+
             const newUserData = { ...res.data };
             delete newUserData.success;
             delete newUserData.token;
@@ -76,11 +80,11 @@ export const AuthProvider = ({ children }) => {
     const updateUser = async (updatedData) => {
         try {
             const res = await api.put('/auth/updatedetails', updatedData);
-            
+
             // Cập nhật lại localStorage và State
             localStorage.setItem('userInfo', JSON.stringify(res.data.data));
             setUser(res.data.data);
-            
+
             toast.success('Cập nhật hồ sơ thành công!');
             return true;
         } catch (error) {
@@ -89,8 +93,24 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Hàm refresh user data (cập nhật wallet balance)
+    const refreshUser = async () => {
+        try {
+            const res = await api.get('/auth/me');
+            const userData = res.data.data;
+
+            // Cập nhật lại localStorage và State
+            localStorage.setItem('userInfo', JSON.stringify(userData));
+            setUser(userData);
+            return userData;
+        } catch (error) {
+            console.error('Lỗi refresh user data:', error);
+            return null;
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, login, register, logout, loading, updateUser }}>
+        <AuthContext.Provider value={{ user, login, register, logout, loading, updateUser, refreshUser }}>
             {children}
         </AuthContext.Provider>
     );

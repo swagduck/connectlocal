@@ -1,5 +1,9 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const crypto = require('crypto');
+
+// Blacklist để lưu token đã bị revoke
+const tokenBlacklist = new Set();
 
 const protect = async (req, res, next) => {
   let token;
@@ -12,6 +16,11 @@ const protect = async (req, res, next) => {
     try {
       // Lấy token
       token = req.headers.authorization.split(" ")[1];
+      
+      // Check if token is blacklisted
+      if (tokenBlacklist.has(token)) {
+        return res.status(401).json({ success: false, message: "Token đã bị revoke, vui lòng đăng nhập lại" });
+      }
 
       // Giải mã token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -21,22 +30,23 @@ const protect = async (req, res, next) => {
 
       // 🛑 FIX LỖI 500: Kiểm tra nếu user không tồn tại (đã bị xóa)
       if (!req.user) {
-        res.status(401);
-        throw new Error("User không tồn tại hoặc đã bị xóa.");
+        return res.status(401).json({ success: false, message: "User không tồn tại hoặc đã bị xóa." });
+      }
+      
+      // Check if user is banned
+      if (req.user.banned) {
+        return res.status(403).json({ success: false, message: "Tài khoản của bạn đã bị khóa" });
       }
 
       next(); // Cho phép đi tiếp
     } catch (error) {
       console.error(error);
-      res.status(401);
-      // Trả về JSON lỗi để tránh crash app nếu không bắt được exception
-      throw new Error("Token không hợp lệ, vui lòng đăng nhập lại");
+      return res.status(401).json({ success: false, message: "Token không hợp lệ, vui lòng đăng nhập lại" });
     }
   }
 
   if (!token) {
-    res.status(401);
-    throw new Error("Không có quyền truy cập, thiếu Token");
+    return res.status(401).json({ success: false, message: "Không có quyền truy cập, thiếu Token" });
   }
 };
 
@@ -45,19 +55,27 @@ const authorize = (...roles) => {
   return (req, res, next) => {
     // Kiểm tra an toàn: nếu req.user chưa có thì chặn luôn
     if (!req.user) {
-      res.status(401);
-      throw new Error("Chưa đăng nhập (User not found)");
+      return res.status(401).json({ success: false, message: "Chưa đăng nhập (User not found)" });
     }
 
     if (!roles.includes(req.user.role)) {
-      res.status(403);
-      throw new Error(
-        `Role '${req.user.role}' không có quyền thực hiện hành động này`
-      );
+      return res.status(403).json({ 
+        success: false,
+        message: `Role '${req.user.role}' không có quyền thực hiện hành động này`
+      });
     }
     next();
   };
 };
 
+// Middleware để revoke token
+const revokeToken = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (token) {
+    tokenBlacklist.add(token);
+  }
+  next();
+};
+
 // 👇 QUAN TRỌNG: Phải export dạng Object chứa cả 2 hàm
-module.exports = { protect, authorize };
+module.exports = { protect, authorize, revokeToken, tokenBlacklist };

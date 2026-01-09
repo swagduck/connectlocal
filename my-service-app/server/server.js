@@ -5,8 +5,7 @@ const app = require("./src/app");
 const mongoose = require("mongoose");
 const http = require("http");
 const { Server } = require("socket.io");
-
-// (Đã xóa dòng import paymentRoutes thừa ở đây)
+const socketHandler = require("./src/utils/socket");
 
 // Tạo HTTP Server
 const server = http.createServer(app);
@@ -19,11 +18,8 @@ const io = new Server(server, {
   },
 });
 
-// (Đã xóa dòng app.use payment thừa ở đây)
-
-// --- LOGIC SOCKET ---
-let onlineUsers = [];
-// ... (giữ nguyên phần socket bên dưới) ...
+// Initialize socket handler
+socketHandler(io);
 
 // --- KẾT NỐI DB & CHẠY SERVER ---
 const PORT = process.env.PORT || 5000;

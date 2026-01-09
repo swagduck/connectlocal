@@ -13,12 +13,12 @@ const transactionSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["deposit", "payment", "refund", "withdraw"], // nạp, thanh toán, hoàn tiền, rút
+      enum: ["deposit", "payment", "refund", "withdraw", "earning"], // nạp, thanh toán, hoàn tiền, rút, thu nhập
       required: true,
     },
     status: {
       type: String,
-      enum: ["pending", "completed", "failed"],
+      enum: ["pending", "completed", "failed", "cancelled"],
       default: "pending",
     },
     paymentMethod: {
