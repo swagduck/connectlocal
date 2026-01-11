@@ -21,7 +21,8 @@ const Wallet = () => {
             const res = await api.get('/payment/history');
             setTransactions(res.data.data);
         } catch (error) {
-            console.error(error);
+            console.error("Lỗi tải lịch sử giao dịch:", error);
+            toast.error(error.response?.data?.message || "Không thể tải lịch sử giao dịch. Vui lòng thử lại.");
         }
     };
 

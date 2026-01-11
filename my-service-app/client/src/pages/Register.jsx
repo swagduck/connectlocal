@@ -1,6 +1,6 @@
 import { useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useHistory, Link } from 'react-router-dom';
 
 const Register = () => {
     const [formData, setFormData] = useState({
@@ -12,7 +12,7 @@ const Register = () => {
     });
 
     const { register } = useContext(AuthContext);
-    const navigate = useNavigate();
+    const history = useHistory();
 
     const { name, email, password, phone, role } = formData;
 
@@ -28,7 +28,7 @@ const Register = () => {
         // Gọi hàm register từ AuthContext
         const success = await register(formData);
         if (success) {
-            navigate('/'); // Đăng ký xong chuyển về trang chủ
+            history.push('/'); // Đăng ký xong chuyển về trang chủ
         }
     };
 

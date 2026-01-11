@@ -50,6 +50,18 @@ const serviceSchema = new mongoose.Schema(
     location: {
       address: { type: String, required: true },
       city: { type: String, default: "Hồ Chí Minh" },
+      // Location coordinates for radius-based search
+      coordinates: {
+        type: {
+          type: String,
+          enum: ['Point'],
+          default: 'Point'
+        },
+        coordinates: {
+          type: [Number], // [longitude, latitude]
+          default: [0, 0]
+        }
+      }
     },
     images: [
       {
@@ -68,5 +80,8 @@ const serviceSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Create geospatial index for radius-based search
+serviceSchema.index({ 'location.coordinates': '2dsphere' });
 
 module.exports = mongoose.model("Service", serviceSchema);

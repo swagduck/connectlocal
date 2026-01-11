@@ -24,6 +24,7 @@ exports.getRequests = async (req, res, next) => {
   try {
     const requests = await Request.find({ status: "open" })
       .populate("user", "name avatar phone role")
+      .populate("applicants", "name avatar rating reviewCount")
       .sort("-createdAt");
     res
       .status(200)
@@ -50,14 +51,33 @@ exports.getMyRequests = async (req, res, next) => {
 // @desc    Thợ ứng tuyển
 exports.applyRequest = async (req, res, next) => {
   try {
+    // Kiểm tra user có phải provider không
+    const user = await User.findById(req.user.id);
+    if (user.role !== 'provider') {
+      res.status(403);
+      throw new Error("Chỉ thợ mới có thể ứng tuyển");
+    }
+
+    // Kiểm tra thợ đã có dịch vụ chưa
+    const hasService = await Service.findOne({ user: req.user.id });
+    if (!hasService) {
+      res.status(400);
+      throw new Error("Bạn cần đăng ít nhất một dịch vụ trước khi ứng tuyển");
+    }
+
     const request = await Request.findById(req.params.id);
     if (!request) {
       res.status(404);
       throw new Error("Không tìm thấy yêu cầu");
     }
 
+    if (request.status !== 'open') {
+      res.status(400);
+      throw new Error("Yêu cầu này không còn nhận ứng viên");
+    }
+
     // Check đã ứng tuyển chưa
-    if (request.applicants.includes(req.user.id)) {
+    if (request.applicants.some(id => id.toString() === req.user.id)) {
       res.status(400);
       throw new Error("Bạn đã ứng tuyển đơn này rồi");
     }
@@ -65,7 +85,14 @@ exports.applyRequest = async (req, res, next) => {
     request.applicants.push(req.user.id);
     await request.save();
 
-    res.status(200).json({ success: true, data: request });
+    // Populate để trả về thông tin đầy đủ
+    await request.populate("applicants", "name avatar rating reviewCount");
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Ứng tuyển thành công!",
+      data: request 
+    });
   } catch (error) {
     next(error);
   }

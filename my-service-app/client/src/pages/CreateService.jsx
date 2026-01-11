@@ -1,13 +1,13 @@
 import { useState, useContext } from 'react';
 import api from '../services/api';
-import { useNavigate } from 'react-router-dom';
+import { useHistory } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { AuthContext } from '../context/AuthContext';
 import { UploadCloud, Clock, Shield, MapPin } from 'lucide-react';
 
 const CreateService = () => {
   const { user } = useContext(AuthContext);
-  const navigate = useNavigate();
+  const history = useHistory();
   const [loading, setLoading] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -58,7 +58,7 @@ const CreateService = () => {
       await api.post('/services', { ...formData, images: imageUrls });
       
       toast.success('Đăng dịch vụ thành công!');
-      navigate('/');
+      history.push('/');
     } catch (error) {
       toast.error(error.response?.data?.message || 'Có lỗi xảy ra');
     } finally {

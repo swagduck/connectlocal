@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { Users, ShoppingBag, Calendar, Trash2, Search, Shield, Eye, CheckCircle, XCircle, MessageSquare, AlertTriangle, TrendingUp, Clock, DollarSign, FileText, Settings, Ban, UserCheck, Star, CreditCard, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Users, ShoppingBag, Calendar, Trash2, Search, Shield, Eye, CheckCircle, XCircle, MessageSquare, AlertTriangle, TrendingUp, Clock, DollarSign, FileText, Settings, Ban, UserCheck, Star, CreditCard, ArrowUpRight, ArrowDownRight, PieChart, BarChart3, ImageIcon } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 
@@ -12,10 +12,12 @@ const AdminDashboard = () => {
     const [bookings, setBookings] = useState([]);
     const [requests, setRequests] = useState([]);
     const [transactions, setTransactions] = useState([]);
+    const [revenueData, setRevenueData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedItem, setSelectedItem] = useState(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
+    const [revenuePeriod, setRevenuePeriod] = useState('30d');
 
     // Ảnh mặc định khi không có hình ảnh hoặc link rỗng
     const placeholderImg = "https://placehold.co/150x150?text=No+Image";
@@ -23,6 +25,12 @@ const AdminDashboard = () => {
     useEffect(() => {
         fetchData();
     }, []);
+
+    useEffect(() => {
+        if (activeTab === 'revenue') {
+            fetchRevenueData();
+        }
+    }, [activeTab, revenuePeriod]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -60,6 +68,28 @@ const AdminDashboard = () => {
             toast.error("Không thể tải dữ liệu Admin. Kiểm tra quyền truy cập.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchRevenueData = async () => {
+        try {
+            const response = await api.get(`/admin/revenue?period=${revenuePeriod}`);
+            setRevenueData(response.data.data);
+        } catch (error) {
+            console.error("Lỗi tải dữ liệu doanh thu:", error);
+            toast.error("Không thể tải dữ liệu doanh thu");
+        }
+    };
+
+    const handleFixImages = async () => {
+        if (!window.confirm("Đây sẽ xóa tất cả ảnh cũ (/uploads/...) và để trống. Bạn sẽ cần upload lại ảnh Cloudinary. Tiếp tục?")) return;
+        try {
+            const response = await api.post('/admin/fix-images');
+            toast.success(response.data.message);
+            fetchData(); // Refresh lại data
+        } catch (error) {
+            console.error("Lỗi sửa ảnh:", error);
+            toast.error(error.response?.data?.message || "Không thể sửa ảnh");
         }
     };
 
@@ -196,7 +226,8 @@ const AdminDashboard = () => {
                             { id: 'services', label: 'Dịch vụ', icon: ShoppingBag },
                             { id: 'bookings', label: 'Đơn hàng', icon: Calendar },
                             { id: 'requests', label: 'Yêu cầu', icon: FileText },
-                            { id: 'transactions', label: 'Giao dịch', icon: DollarSign }
+                            { id: 'transactions', label: 'Giao dịch', icon: DollarSign },
+                            { id: 'revenue', label: 'Doanh thu', icon: PieChart }
                         ].map(tab => (
                             <button
                                 key={tab.id}
@@ -375,6 +406,13 @@ const AdminDashboard = () => {
                                     <ShoppingBag size={20} />
                                     Tất cả Dịch vụ ({services.length})
                                 </h3>
+                                <button
+                                    onClick={handleFixImages}
+                                    className="bg-orange-100 text-orange-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-200 flex items-center gap-2 transition-colors"
+                                >
+                                    <ImageIcon size={16} />
+                                    Sửa ảnh Cloudinary
+                                </button>
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left text-sm">
@@ -680,6 +718,177 @@ const AdminDashboard = () => {
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- TAB 7: REVENUE --- */}
+                    {activeTab === 'revenue' && (
+                        <div className="space-y-6 animate-fade-in-up">
+                            {/* Period Selector */}
+                            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                                        <PieChart size={20} />
+                                        Báo cáo Doanh thu
+                                    </h3>
+                                    <div className="flex gap-2">
+                                        {['7d', '30d', '90d', '1y'].map(period => (
+                                            <button
+                                                key={period}
+                                                onClick={() => setRevenuePeriod(period)}
+                                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${revenuePeriod === period
+                                                    ? 'bg-blue-600 text-white'
+                                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                    }`}
+                                            >
+                                                {period === '7d' ? '7 ngày' :
+                                                    period === '30d' ? '30 ngày' :
+                                                        period === '90d' ? '90 ngày' : '1 năm'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {revenueData && (
+                                    <>
+                                        {/* Summary Cards */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                                            <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <p className="text-green-600 text-sm font-medium">Tổng Doanh thu</p>
+                                                        <p className="text-2xl font-bold text-green-700">
+                                                            {(revenueData.summary.totalRevenue || 0).toLocaleString()}đ
+                                                        </p>
+                                                    </div>
+                                                    <DollarSign className="text-green-500" size={24} />
+                                                </div>
+                                            </div>
+                                            <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <p className="text-blue-600 text-sm font-medium">Tổng GT Giao dịch</p>
+                                                        <p className="text-2xl font-bold text-blue-700">
+                                                            {(revenueData.summary.totalTransactionValue || 0).toLocaleString()}đ
+                                                        </p>
+                                                    </div>
+                                                    <TrendingUp className="text-blue-500" size={24} />
+                                                </div>
+                                            </div>
+                                            <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <p className="text-purple-600 text-sm font-medium">Số đơn hoàn thành</p>
+                                                        <p className="text-2xl font-bold text-purple-700">
+                                                            {revenueData.summary.totalBookings || 0}
+                                                        </p>
+                                                    </div>
+                                                    <Calendar className="text-purple-500" size={24} />
+                                                </div>
+                                            </div>
+                                            <div className="bg-gradient-to-r from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <p className="text-orange-600 text-sm font-medium">Giá trị trung bình</p>
+                                                        <p className="text-2xl font-bold text-orange-700">
+                                                            {(revenueData.summary.averageOrderValue || 0).toLocaleString()}đ
+                                                        </p>
+                                                    </div>
+                                                    <BarChart3 className="text-orange-500" size={24} />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Revenue by Category */}
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            <div className="bg-gray-50 p-4 rounded-lg">
+                                                <h4 className="font-semibold text-gray-700 mb-4">Doanh thu theo Danh mục</h4>
+                                                <div className="space-y-2">
+                                                    {Object.entries(revenueData.revenueByCategory || {}).map(([category, data]) => (
+                                                        <div key={category} className="flex justify-between items-center p-2 bg-white rounded">
+                                                            <span className="font-medium text-gray-700">{category}</span>
+                                                            <div className="text-right">
+                                                                <p className="font-bold text-green-600">{data.revenue.toLocaleString()}đ</p>
+                                                                <p className="text-xs text-gray-500">{data.count} đơn</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Top Providers */}
+                                            <div className="bg-gray-50 p-4 rounded-lg">
+                                                <h4 className="font-semibold text-gray-700 mb-4">Top Thợ ({(revenueData.topProviders || []).filter(p => p.role === 'provider').length || 0})</h4>
+                                                <div className="space-y-2">
+                                                    {(revenueData.topProviders || []).filter(p => p.role === 'provider').slice(0, 5).map((provider, index) => (
+                                                        <div key={index} className="flex justify-between items-center p-2 bg-white rounded">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold">
+                                                                    {index + 1}
+                                                                </span>
+                                                                <div>
+                                                                    <p className="font-medium text-gray-700">{provider.name}</p>
+                                                                    <p className="text-xs text-gray-500">{provider.role === 'provider' ? 'Thợ' : 'Khách'}</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <p className="font-bold text-green-600">{provider.revenue.toLocaleString()}đ</p>
+                                                                <p className="text-xs text-gray-500">{provider.count} đơn</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Recent Transactions */}
+                                        <div className="mt-6">
+                                            <h4 className="font-semibold text-gray-700 mb-4">Giao dịch gần đây</h4>
+                                            <div className="bg-white rounded-lg overflow-hidden">
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-sm">
+                                                        <thead className="bg-gray-100">
+                                                            <tr>
+                                                                <th className="p-3 text-left">Dịch vụ</th>
+                                                                <th className="p-3 text-left">Thợ</th>
+                                                                <th className="p-3 text-right">Giá trị</th>
+                                                                <th className="p-3 text-right">Phí nền tảng</th>
+                                                                <th className="p-3 text-left">Ngày</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y">
+                                                            {(revenueData.recentTransactions || []).slice(0, 10).map((transaction, index) => (
+                                                                <tr key={index} className="hover:bg-gray-50">
+                                                                    <td className="p-3">
+                                                                        <p className="font-medium truncate max-w-[150px]">
+                                                                            {transaction.service?.title || 'Dịch vụ đã xóa'}
+                                                                        </p>
+                                                                        <p className="text-xs text-gray-500">
+                                                                            {transaction.service?.category || 'N/A'}
+                                                                        </p>
+                                                                    </td>
+                                                                    <td className="p-3">
+                                                                        <p className="font-medium">{transaction.provider?.name || 'N/A'}</p>
+                                                                    </td>
+                                                                    <td className="p-3 text-right font-bold">
+                                                                        {(transaction.price || 0).toLocaleString()}đ
+                                                                    </td>
+                                                                    <td className="p-3 text-right font-bold text-green-600">
+                                                                        {(transaction.platformFee || 0).toLocaleString()}đ
+                                                                    </td>
+                                                                    <td className="p-3 text-gray-500 text-sm">
+                                                                        {new Date(transaction.createdAt).toLocaleDateString('vi-VN')}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     )}

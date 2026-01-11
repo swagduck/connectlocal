@@ -3,10 +3,12 @@ import { AuthContext } from '../context/AuthContext';
 import { SocketContext } from '../context/SocketContext';
 import api from '../services/api';
 import { Send, MessageCircle, Users, Circle, Phone, Mail, Search, MoreVertical, Smile, Paperclip, Image } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 
 const ChatNew = () => {
     const { user } = useContext(AuthContext);
     const { socket, onlineUsers, notifications, typingUsers, markAsRead, startTyping, stopTyping } = useContext(SocketContext);
+    const location = useLocation();
 
     const [conversations, setConversations] = useState([]);
     const [currentChat, setCurrentChat] = useState(null);
@@ -23,6 +25,10 @@ const ChatNew = () => {
     const fileInputRef = useRef(null);
     const typingTimeoutRef = useRef(null);
 
+    // Get target user from URL parameter
+    const urlParams = new URLSearchParams(location.search);
+    const targetUserId = urlParams.get('user');
+
     // Update online count
     useEffect(() => {
         setOnlineCount(onlineUsers.length);
@@ -32,28 +38,81 @@ const ChatNew = () => {
         if (!socket) return;
 
         socket.on("get_message", (data) => {
-            setMessages(prev => [...prev, {
-                _id: data._id,
-                sender: data.senderId || data.sender,
-                text: typeof data.text === 'string' ? data.text : JSON.stringify(data.text),
-                createdAt: new Date(data.createdAt)
-            }]);
-            markAsRead(data.senderId);
+            console.log('📨 ChatNew - Received message:', data);
+
+            // Check if message belongs to current chat
+            if (currentChat && data.conversation === currentChat._id) {
+                console.log('📨 ChatNew - Message belongs to current chat, adding to messages');
+
+                setMessages(prev => {
+                    const newMessages = [...prev, {
+                        _id: data._id,
+                        sender: data.sender,
+                        text: data.message || data.text, // Use message field from server
+                        createdAt: new Date(data.createdAt)
+                    }];
+
+                    // Auto scroll to bottom
+                    setTimeout(() => {
+                        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                    }, 100);
+
+                    return newMessages;
+                });
+
+                // Mark as read if it's not from current user
+                if (data.sender._id !== user._id) {
+                    markAsRead(data.sender._id);
+                }
+            } else {
+                console.log('📨 ChatNew - Message not for current chat, ignoring');
+            }
         });
-    }, [socket]);
+    }, [socket, currentChat, user]);
 
     useEffect(() => {
         const getConversations = async () => {
             try {
                 const res = await api.get("/chat/conversations");
                 setConversations(res.data);
-            } catch (err) { console.log(err); }
+
+                // If there's a target user, find or create conversation
+                if (targetUserId) {
+                    const existingConversation = res.data.find(conv =>
+                        conv.members.includes(targetUserId)
+                    );
+
+                    if (existingConversation) {
+                        setCurrentChat(existingConversation);
+                    } else {
+                        // Create new conversation with target user
+                        try {
+                            const newConvRes = await api.post("/chat", {
+                                userId: targetUserId
+                            });
+                            setCurrentChat(newConvRes.data);
+                            // Check if conversation already exists in state before adding
+                            setConversations(prev => {
+                                const exists = prev.some(conv => conv._id === newConvRes.data._id);
+                                if (!exists) {
+                                    return [...prev, newConvRes.data];
+                                }
+                                return prev;
+                            });
+                        } catch (error) {
+                            console.error('Lỗi tạo cuộc trò chuyện mới:', error);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Lỗi tải danh sách cuộc trò chuyện:', err);
+            }
         };
 
         if (user?._id) {
             getConversations();
         }
-    }, [user?._id]);
+    }, [user?._id, targetUserId]);
 
     useEffect(() => {
         const getMessages = async () => {
@@ -67,7 +126,9 @@ const ChatNew = () => {
                         sender: msg.senderId || msg.sender
                     }));
                     setMessages(normalizedMessages);
-                } catch (err) { console.log(err); }
+                } catch (err) {
+                    console.error('Lỗi tải tin nhắn:', err);
+                }
             }
         };
         getMessages();
@@ -82,6 +143,10 @@ const ChatNew = () => {
         if (!newMessage.trim()) return;
 
         const receiverId = currentChat.members.find(member => member._id !== user._id)._id;
+        console.log('📤 Sending message to:', receiverId);
+        console.log('📤 Message content:', newMessage);
+        console.log('📤 Current chat ID:', currentChat._id);
+        console.log('📤 Current user ID:', user._id);
 
         // Optimistic update
         const tempId = Date.now();
@@ -94,11 +159,14 @@ const ChatNew = () => {
         }]);
 
         try {
+            console.log('📤 Making API call to /chat/messages...');
             const res = await api.post("/chat/messages", {
                 conversationId: currentChat._id,
                 sender: user._id,
                 text: newMessage
             });
+
+            console.log('✅ API call successful:', res.data);
 
             // Replace temp message with real one
             setMessages(prev => prev.map(msg =>
@@ -109,7 +177,9 @@ const ChatNew = () => {
         } catch (err) {
             // Remove temp message on error
             setMessages(prev => prev.filter(msg => msg._id !== tempId));
-            console.log(err);
+            console.error('❌ Lỗi gửi tin nhắn:', err);
+            console.error('❌ Error response:', err.response);
+            alert('Không thể gửi tin nhắn. Vui lòng thử lại.');
         }
     };
 
@@ -134,11 +204,61 @@ const ChatNew = () => {
         }
     };
 
-    const handleFileSelect = (e) => {
+    const handleFileSelect = async (e) => {
         const file = e.target.files[0];
-        if (file) {
-            console.log('File selected:', file.name);
-            // TODO: Implement file upload
+        if (!file) return;
+
+        // Validate file size (max 5MB)
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (file.size > maxSize) {
+            return alert('File quá lớn! Kích thước tối đa là 5MB.');
+        }
+
+        // Validate file type
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        if (!allowedTypes.includes(file.type)) {
+            return alert('Loại file không được hỗ trợ! Chỉ chấp nhận: ảnh (JPG, PNG, GIF, WebP), PDF, DOC, DOCX.');
+        }
+
+        try {
+            const formData = new FormData();
+            formData.append('image', file);
+
+            const uploadRes = await api.post('/upload', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            if (uploadRes.data.success && uploadRes.data.url) {
+                // Send file URL as a message
+                const receiverId = currentChat.members.find(member => member._id !== user._id)?._id;
+                if (!receiverId) return;
+
+                const messageText = file.type.startsWith('image/')
+                    ? `[Ảnh: ${file.name}](${uploadRes.data.url})`
+                    : `[File: ${file.name}](${uploadRes.data.url})`;
+
+                const res = await api.post("/chat/messages", {
+                    conversationId: currentChat._id,
+                    sender: user._id,
+                    text: messageText,
+                    fileUrl: uploadRes.data.url,
+                    fileName: file.name,
+                    fileType: file.type
+                });
+
+                // Add message to state
+                setMessages(prev => [...prev, res.data]);
+
+                // Reset file input
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                }
+            }
+        } catch (error) {
+            console.error('Lỗi upload file:', error);
+            alert('Không thể upload file. Vui lòng thử lại.');
         }
     };
 
@@ -351,15 +471,18 @@ const ChatNew = () => {
                         </div>
 
                         {/* Messages */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gradient-to-b from-gray-50/50 to-white/30">
                             {messages.map((message, index) => {
                                 const isOwn = typeof message.sender === 'object' ? message.sender._id === user._id : message.sender === user._id;
                                 const showTypingIndicator = !isOwn && typingUsers.has(typeof message.sender === 'object' ? message.sender._id : message.sender);
+                                const isConsecutive = index > 0 &&
+                                    (typeof messages[index - 1].sender === 'object' ? messages[index - 1].sender._id : messages[index - 1].sender) ===
+                                    (typeof message.sender === 'object' ? message.sender._id : message.sender);
 
                                 return (
-                                    <div key={message._id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-6 group`}>
+                                    <div key={message._id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'} ${isConsecutive ? 'mb-2' : 'mb-6'} group`}>
                                         <div className={`max-w-xs lg:max-w-md xl:max-w-lg ${isOwn ? 'order-2' : 'order-1'} flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
-                                            {!isOwn && (
+                                            {!isOwn && !isConsecutive && (
                                                 <div className="flex items-center gap-2 mb-2">
                                                     <img
                                                         src={getSafeAvatarSrc(
@@ -374,14 +497,40 @@ const ChatNew = () => {
                                                     </span>
                                                 </div>
                                             )}
-                                            <div className={`relative group-hover:scale-105 transition-transform duration-200 ${isOwn ? 'order-2' : 'order-1'}`}>
-                                                <div className={`rounded-2xl px-5 py-3 shadow-xl hover:shadow-2xl transition-shadow duration-200 ${isOwn
-                                                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-br-2xl shadow-blue-500/25'
-                                                    : 'bg-white text-gray-800 border border-gray-200 rounded-bl-2xl shadow-gray-300/50'
+                                            <div className={`relative group-hover:scale-[1.02] transition-transform duration-300 ${isOwn ? 'order-2' : 'order-1'}`}>
+                                                <div className={`rounded-2xl px-5 py-3 shadow-lg hover:shadow-xl transition-all duration-300 ${isOwn
+                                                    ? 'bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 text-white rounded-br-2xl shadow-blue-500/30 hover:shadow-blue-500/40'
+                                                    : 'bg-white text-gray-800 border border-gray-200/50 rounded-bl-2xl shadow-gray-300/30 hover:shadow-gray-400/40 backdrop-blur-sm'
                                                     }`}>
-                                                    <p className="text-sm leading-relaxed break-words">
-                                                        {typeof message.text === 'string' ? message.text : JSON.stringify(message.text)}
-                                                    </p>
+                                                    {message.fileUrl ? (
+                                                        <div className="mt-1">
+                                                            {message.fileType?.startsWith('image/') ? (
+                                                                <img
+                                                                    src={message.fileUrl}
+                                                                    alt={message.fileName || 'Image'}
+                                                                    className="max-w-xs rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                                                    onClick={() => window.open(message.fileUrl, '_blank')}
+                                                                    onError={(e) => {
+                                                                        e.target.style.display = 'none';
+                                                                        e.target.nextSibling.style.display = 'block';
+                                                                    }}
+                                                                />
+                                                            ) : null}
+                                                            <a
+                                                                href={message.fileUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className={`${message.fileType?.startsWith('image/') ? 'block mt-2 text-xs' : ''} ${isOwn ? 'text-blue-100 hover:text-white' : 'text-blue-600 hover:text-blue-800'} underline flex items-center gap-1`}
+                                                            >
+                                                                📎 {message.fileName || 'File đính kèm'}
+                                                            </a>
+                                                        </div>
+                                                    ) : null}
+                                                    {message.text && (
+                                                        <p className="text-sm leading-relaxed break-words">
+                                                            {typeof message.text === 'string' ? message.text : JSON.stringify(message.text)}
+                                                        </p>
+                                                    )}
                                                     {showTypingIndicator && (
                                                         <div className="flex items-center gap-1 mt-2">
                                                             <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
@@ -403,7 +552,7 @@ const ChatNew = () => {
                         </div>
 
                         {/* Message Input */}
-                        <div className="bg-white/95 backdrop-blur-sm border-t border-gray-200/50 p-6 shadow-lg">
+                        <div className="bg-white/90 backdrop-blur-lg border-t border-gray-200/30 p-6 shadow-2xl">
                             <form onSubmit={handleSendMessage} className="flex items-end gap-3">
                                 <div className="flex-1 relative">
                                     <input
@@ -413,18 +562,18 @@ const ChatNew = () => {
                                         className="hidden"
                                         accept="image/*,.pdf,.doc,.docx"
                                     />
-                                    <div className="flex items-center bg-gray-100 rounded-2xl border border-gray-200 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-200 transition-all duration-200">
+                                    <div className="flex items-center bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl border border-gray-200/50 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-200/50 transition-all duration-300 shadow-inner">
                                         <button
                                             type="button"
                                             onClick={() => fileInputRef.current?.click()}
-                                            className="p-3 text-gray-500 hover:text-blue-600 hover:bg-white rounded-l-2xl transition-all duration-200"
+                                            className="p-3 text-gray-500 hover:text-blue-600 hover:bg-white/50 rounded-l-2xl transition-all duration-300"
                                         >
                                             <Paperclip size={18} />
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                                            className="p-3 text-gray-500 hover:text-blue-600 hover:bg-white transition-all duration-200"
+                                            className="p-3 text-gray-500 hover:text-blue-600 hover:bg-white/50 transition-all duration-300"
                                         >
                                             <Smile size={18} />
                                         </button>
@@ -439,14 +588,14 @@ const ChatNew = () => {
                                                 }
                                             }}
                                             placeholder="Nhập tin nhắn..."
-                                            className="flex-1 px-4 py-3 bg-transparent border-0 focus:outline-none text-gray-800 placeholder-gray-600"
+                                            className="flex-1 px-4 py-3 bg-transparent border-0 focus:outline-none text-gray-800 placeholder-gray-500"
                                         />
                                     </div>
                                 </div>
                                 <button
                                     type="submit"
                                     disabled={!newMessage.trim()}
-                                    className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-2xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 shadow-lg"
+                                    className="bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 text-white p-4 rounded-2xl hover:from-blue-600 hover:via-blue-700 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 shadow-xl hover:shadow-2xl"
                                 >
                                     <Send size={20} />
                                 </button>
@@ -454,25 +603,17 @@ const ChatNew = () => {
                         </div>
                     </>
                 ) : (
-                    <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-gray-50 to-white">
+                    <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50">
                         <div className="text-center max-w-md mx-auto p-8">
-                            <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-purple-100 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg">
-                                <MessageCircle size={48} className="text-blue-500" />
+                            <div className="w-32 h-32 bg-gradient-to-br from-blue-100 via-purple-100 to-pink-100 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl animate-pulse">
+                                <MessageCircle size={64} className="text-blue-500" />
                             </div>
-                            <h3 className="text-2xl font-bold text-gray-800 mb-3">Chọn một cuộc trò chuyện</h3>
-                            <p className="text-gray-600 leading-relaxed mb-6">
-                                Hãy chọn cuộc trò chuyện từ danh sách bên trái để bắt đầu trò chuyện với người khác
+                            <h3 className="text-3xl font-bold text-gray-800 mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                                Chọn một cuộc trò chuyện
+                            </h3>
+                            <p className="text-gray-600 text-lg leading-relaxed">
+                                Chọn cuộc trò chuyện từ danh sách bên trái để bắt đầu nhắn tin
                             </p>
-                            <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                    <span>Bắt đầu chat</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                    <span>Kết nối</span>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 )}

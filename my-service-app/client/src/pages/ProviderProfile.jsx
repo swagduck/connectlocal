@@ -1,20 +1,22 @@
 import { useEffect, useState, useContext } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useHistory } from 'react-router-dom';
 import api from '../services/api';
 // 👇 Import MessageCircle
 import { Phone, Mail, MapPin, Star, Calendar, Briefcase, CheckCircle, MessageCircle, Loader2, Sparkles, Award, Map } from 'lucide-react';
 import ServiceCard from '../components/ServiceCard';
 import { AuthContext } from '../context/AuthContext'; // <-- Import AuthContext
 import { toast } from 'react-hot-toast';
+import FriendButton from '../components/FriendButton'; // <-- Import FriendButton
 
 const ProviderProfile = () => {
     const { id } = useParams();
-    const navigate = useNavigate();
+    const history = useHistory();
     const { user } = useContext(AuthContext); // <-- Lấy user
 
     const [provider, setProvider] = useState(null);
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [friendRequestId, setFriendRequestId] = useState(null); // <-- Thêm state cho requestId
 
     useEffect(() => {
         const fetchData = async () => {
@@ -26,20 +28,36 @@ const ProviderProfile = () => {
                     const serviceRes = await api.get(`/services?user=${id}`);
                     setServices(serviceRes.data.data);
                 }
+
+                // Lấy friend request status nếu có user
+                if (user) {
+                    try {
+                        const statusRes = await api.get(`/friends/status/${id}`);
+                        if (statusRes.data.status === 'sent') {
+                            // Tìm requestId của lời mời đã gửi
+                            const sentRes = await api.get('/friends/sent?limit=10');
+                            const myRequest = sentRes.data.data.find(req => req.recipient._id === id);
+                            setFriendRequestId(myRequest ? myRequest._id : null);
+                        }
+                    } catch (error) {
+                        console.log('Không lấy được friend status:', error);
+                    }
+                }
             } catch (error) {
-                console.error("Lỗi tải hồ sơ");
+                console.error("Lỗi tải hồ sơ:", error);
+                toast.error(error.response?.data?.message || "Không thể tải hồ sơ. Vui lòng thử lại.");
             } finally {
                 setLoading(false);
             }
         };
         fetchData();
-    }, [id]);
+    }, [id, user]);
 
     // --- HÀM XỬ LÝ CHAT ---
     const handleChat = async () => {
         if (!user) {
             toast.error("Vui lòng đăng nhập để nhắn tin");
-            navigate('/login');
+            history.push('/login');
             return;
         }
         if (user._id === provider._id) {
@@ -48,8 +66,8 @@ const ProviderProfile = () => {
         }
 
         try {
-            await api.post('/chat', { userId: provider._id });
-            navigate('/chat');
+            // Đi thẳng đến chat với người dùng cụ thể
+            history.push(`/chat?user=${provider._id}`);
         } catch (error) {
             toast.error("Không thể bắt đầu cuộc trò chuyện");
         }
@@ -91,7 +109,7 @@ const ProviderProfile = () => {
                     </div>
                     <p className="text-gray-600 text-lg font-medium">Không tìm thấy người dùng này.</p>
                     <button
-                        onClick={() => navigate('/')}
+                        onClick={() => history.push('/')}
                         className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all transform hover:scale-105"
                     >
                         Về trang chủ
@@ -158,6 +176,22 @@ const ProviderProfile = () => {
                                         )}
                                     </span>
                                 </div>
+
+                                {/* 👇 NÚT KẾT BẠN THÊM VÀO ĐÂY 👇 */}
+                                {user && user._id !== provider._id && (
+                                    <div className="mb-4">
+                                        <FriendButton
+                                            userId={provider._id}
+                                            requestId={friendRequestId}
+                                            onStatusChange={(status) => {
+                                                // Refresh component khi trạng thái thay đổi
+                                                if (status === 'accepted') {
+                                                    toast.success('Đã kết bạn thành công!');
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                )}
 
                                 {/* 👇 NÚT NHẮN TIN MỚI ĐƯỢC THÊM Ở ĐÂY 👇 */}
                                 {user?._id !== provider._id && (

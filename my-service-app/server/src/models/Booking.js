@@ -30,6 +30,21 @@ const BookingSchema = new mongoose.Schema({
     enum: ["pending", "confirmed", "completed", "cancelled"],
     default: "pending", // Mới đặt thì là đang chờ
   },
+  price: {
+    type: Number,
+    required: true,
+  },
+  // Thông tin commission cho nền tảng
+  platformFee: {
+    type: Number,
+    required: true,
+    default: 0, // Phí nền tảng (10% mặc định)
+  },
+  providerEarning: {
+    type: Number,
+    required: true,
+    default: 0, // Số tiền thợ nhận được
+  },
   createdAt: {
     type: Date,
     default: Date.now,

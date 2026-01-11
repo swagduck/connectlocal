@@ -1,18 +1,18 @@
 import { useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useHistory, Link } from 'react-router-dom';
 
 const Login = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const { login } = useContext(AuthContext);
-    const navigate = useNavigate();
+    const history = useHistory();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         const success = await login(email, password);
         if (success) {
-            navigate('/'); // Chuyển về trang chủ sau khi login xong
+            history.push('/'); // Chuyển về trang chủ sau khi login xong
         }
     };
 

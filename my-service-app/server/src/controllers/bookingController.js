@@ -6,6 +6,10 @@ const Transaction = require("../models/Transaction"); // Nhớ import Transactio
 // @desc    Tạo đơn đặt lịch mới
 exports.createBooking = async (req, res, next) => {
   try {
+    console.log('🚀 BookingController.createBooking called');
+    console.log('📝 Request body:', req.body);
+    console.log('👤 Request user:', req.user);
+    
     const { serviceId, date, note } = req.body;
 
     const service = await Service.findById(serviceId);
@@ -26,11 +30,16 @@ exports.createBooking = async (req, res, next) => {
       throw new Error("Số dư ví không đủ. Vui lòng nạp thêm tiền.");
     }
 
+    // Tính toán commission (10% mặc định)
+    const commissionRate = 0.1; // 10%
+    const platformFee = Math.round(service.price * commissionRate);
+    const providerEarning = service.price - platformFee;
+
     // Trừ tiền từ ví khách
     customer.walletBalance -= service.price;
     await customer.save();
 
-    // Tạo booking
+    // Tạo booking với thông tin commission
     const booking = await Booking.create({
       user: req.user._id,
       provider: service.user,
@@ -38,6 +47,8 @@ exports.createBooking = async (req, res, next) => {
       date,
       note,
       price: service.price, // Lưu giá tại thời điểm đặt
+      platformFee: platformFee,
+      providerEarning: providerEarning,
     });
 
     // Tạo transaction ghi nhận thanh toán
@@ -51,6 +62,33 @@ exports.createBooking = async (req, res, next) => {
     });
 
     console.log(`💳 Đã trừ ${service.price}đ từ ví khách ${customer.name} cho dịch vụ ${service.title}`);
+    console.log(`💰 Phí nền tảng: ${platformFee}đ, Thợ nhận: ${providerEarning}đ`);
+
+    // Gửi thông báo cho thợ qua socket
+    const sendToUser = req.app.get('sendToUser');
+    if (sendToUser) {
+      // Populate customer info for notification
+      const customerInfo = await User.findById(req.user._id).select('name avatar');
+      
+      const success = sendToUser(service.user.toString(), 'new_booking_notification', {
+        bookingId: booking._id,
+        providerId: service.user,
+        customer: customerInfo,
+        service: {
+          _id: service._id,
+          title: service.title,
+          price: service.price
+        },
+        date,
+        note,
+        message: `🎉 ${customerInfo.name} vừa đặt dịch vụ "${service.title}"!`,
+        timestamp: new Date()
+      });
+      
+      if (success) {
+        console.log('🎉 Booking notification sent to provider:', service.user);
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -102,8 +140,9 @@ exports.updateBookingStatus = async (req, res, next) => {
     }
 
     // Kiểm tra quyền (Provider hoặc Admin)
+    const providerId = booking.provider._id ? booking.provider._id.toString() : booking.provider.toString();
     if (
-      booking.provider.toString() !== req.user.id &&
+      providerId !== req.user.id &&
       req.user.role !== "admin"
     ) {
       res.status(403);
@@ -112,14 +151,15 @@ exports.updateBookingStatus = async (req, res, next) => {
 
     // --- LOGIC HOÀN TIỀN KHI THỢ HOÀN THÀNH CÔNG VIỆC ---
     if (status === "completed" && booking.status !== "completed") {
-      const amount = booking.price || booking.service.price;
+      const amount = booking.providerEarning; // Chỉ cộng số tiền thợ thực nhận
 
       // 1. Cộng tiền cho Thợ
-      const provider = await User.findById(booking.provider);
+      const providerId = booking.provider._id ? booking.provider._id : booking.provider;
+      const provider = await User.findById(providerId);
       if (provider) {
         provider.walletBalance += amount;
         await provider.save();
-        console.log(`✅ Đã cộng ${amount}đ cho thợ ${provider.name}`);
+        console.log(`✅ Đã cộng ${amount}đ cho thợ ${provider.name} (sau khi trừ phí nền tảng)`);
       }
 
       // 2. Lưu lịch sử giao dịch
@@ -128,9 +168,21 @@ exports.updateBookingStatus = async (req, res, next) => {
         amount: amount,
         type: "earning",
         status: "completed",
-        description: `Thu tiền từ hoàn thành dịch vụ: ${booking.service.title}`,
+        description: `Thu tiền từ hoàn thành dịch vụ: ${booking.service.title} (Phí nền tảng: ${booking.platformFee}đ)`,
         bookingId: booking._id
       });
+
+      // 3. Tạo transaction ghi nhận doanh thu cho nền tảng (chỉ tạo nếu có phí)
+      if (booking.platformFee > 0) {
+        await Transaction.create({
+          user: null, // System transaction
+          amount: booking.platformFee,
+          type: "commission",
+          status: "completed",
+          description: `Phí nền tảng từ dịch vụ: ${booking.service.title}`,
+          bookingId: booking._id
+        });
+      }
     }
 
     // --- LOGIC HOÀN TIỀN KHI HỦY ĐƠN ---
@@ -156,6 +208,56 @@ exports.updateBookingStatus = async (req, res, next) => {
 
     booking.status = status;
     await booking.save();
+
+    // Gửi thông báo qua socket khi trạng thái thay đổi
+    const io = req.app.get('io');
+    if (io) {
+      let notificationMessage = '';
+      let notificationType = '';
+      
+      switch (status) {
+        case 'accepted':
+          notificationMessage = `🎉 Thợ đã nhận đơn "${booking.service.title}"!`;
+          notificationType = 'booking_accepted';
+          break;
+        case 'in_progress':
+          notificationMessage = `👷 Thợ đang thực hiện "${booking.service.title}"!`;
+          notificationType = 'booking_in_progress';
+          break;
+        case 'completed':
+          notificationMessage = `✅ Đơn "${booking.service.title}" đã hoàn thành!`;
+          notificationType = 'booking_completed';
+          break;
+        case 'cancelled':
+          notificationMessage = `❌ Đơn "${booking.service.title}" đã bị hủy!`;
+          notificationType = 'booking_cancelled';
+          break;
+        default:
+          notificationMessage = `📝 Trạng thái đơn "${booking.service.title}" đã cập nhật!`;
+          notificationType = 'booking_updated';
+      }
+
+      // Gửi thông báo cho khách hàng
+      const sendToUser = req.app.get('sendToUser');
+      if (sendToUser) {
+        const success = sendToUser(booking.user._id.toString(), 'booking_status_notification', {
+          bookingId: booking._id,
+          userId: booking.user._id,
+          type: notificationType,
+          service: {
+            _id: booking.service._id,
+            title: booking.service.title
+          },
+          status,
+          message: notificationMessage,
+          timestamp: new Date()
+        });
+        
+        if (success) {
+          console.log('📨 Booking status notification sent to customer:', booking.user._id);
+        }
+      }
+    }
 
     res.status(200).json({
       success: true,

@@ -46,7 +46,8 @@ const Profile = () => {
             const res = await api.get(`/services?user=${userId}`);
             setMyServices(res.data.data);
         } catch (error) {
-            console.error("Lỗi tải dịch vụ");
+            console.error("Lỗi tải dịch vụ:", error);
+            toast.error(error.response?.data?.message || "Không thể tải danh sách dịch vụ. Vui lòng thử lại.");
         } finally {
             setLoadingServices(false);
         }
@@ -79,7 +80,7 @@ const Profile = () => {
             toast.success('Tải ảnh xong! Bấm Lưu để hoàn tất.');
         } catch (error) {
             console.error("Lỗi upload:", error);
-            toast.error('Lỗi upload ảnh');
+            toast.error(error.response?.data?.message || 'Lỗi upload ảnh. Vui lòng thử lại.');
         } finally {
             setUploading(false);
         }

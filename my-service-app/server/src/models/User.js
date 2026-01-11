@@ -38,6 +38,18 @@ const UserSchema = new mongoose.Schema({
     type: String,
     default: "",
   },
+  // Location coordinates for radius-based search
+  location: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
+    },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      default: [0, 0]
+    }
+  },
   // 👇 MỚI: Số dư ví (Mặc định là 0)
   walletBalance: {
     type: Number,
@@ -57,6 +69,11 @@ const UserSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  // Mối quan hệ bạn bè
+  friends: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
+  }],
   createdAt: {
     type: Date,
     default: Date.now,

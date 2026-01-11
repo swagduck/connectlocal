@@ -5,42 +5,51 @@ const router = express.Router();
 const {
   getStats,
   getAllUsers,
-  deleteUser,
   getAllServices,
   getAllBookings,
-  adminUpdateBooking,
   getAllRequests,
   updateRequest,
-  deleteRequest,
   banUser,
   unbanUser,
+  adminUpdateBooking,
   getAllTransactions,
   updateTransactionStatus,
+  deleteRequest,
+  getRevenueReport,
 } = require("../controllers/adminController");
-
-// Import Middleware (Đảm bảo đường dẫn đúng)
 const { protect, authorize } = require("../middleware/authMiddleware");
+const { fixImagePaths } = require("../../fix-image-paths");
 
-// --- ÁP DỤNG MIDDLEWARE BẢO VỆ ---
-// Tất cả các route bên dưới đều yêu cầu Login (protect) và quyền Admin (authorize)
+// Middleware cho tất cả routes
 router.use(protect);
 router.use(authorize("admin"));
 
-// --- CÁC ROUTES ---
+// Route thống kê
 router.get("/stats", getStats);
+router.get("/revenue", getRevenueReport);
+
+// Route quản lý users
 router.get("/users", getAllUsers);
-router.delete("/users/:id", deleteUser);
 router.put("/users/:id/ban", banUser);
 router.put("/users/:id/unban", unbanUser);
 
+// Route quản lý services
 router.get("/services", getAllServices);
+
+// Route quản lý bookings
 router.get("/bookings", getAllBookings);
 router.put("/bookings/:id", adminUpdateBooking);
+
+// Route quản lý requests
 router.get("/requests", getAllRequests);
 router.put("/requests/:id", updateRequest);
 router.delete("/requests/:id", deleteRequest);
 
+// Route quản lý transactions
 router.get("/transactions", getAllTransactions);
 router.put("/transactions/:id", updateTransactionStatus);
+
+// Route sửa ảnh cũ
+router.post("/fix-images", fixImagePaths);
 
 module.exports = router;

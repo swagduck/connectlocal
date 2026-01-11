@@ -1,13 +1,13 @@
 import { useState, useContext } from 'react';
 import api from '../services/api';
-import { useNavigate } from 'react-router-dom';
+import { useHistory } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { AuthContext } from '../context/AuthContext';
 import { MapPin, DollarSign, Calendar, Briefcase, AlertCircle } from 'lucide-react';
 
 const PostRequest = () => {
   const { user } = useContext(AuthContext);
-  const navigate = useNavigate();
+  const history = useHistory();
   const [loading, setLoading] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -27,14 +27,14 @@ const PostRequest = () => {
     try {
       await api.post('/requests', formData);
       toast.success('🎉 Đăng yêu cầu thành công!');
-      navigate('/manage-requests'); // Chuyển về trang quản lý bài đăng
+      history.push('/manage-requests'); // Chuyển về trang quản lý bài đăng
     } catch (error) {
       const msg = error.response?.data?.message || 'Có lỗi xảy ra';
       toast.error(msg);
       
       // Logic: Nếu lỗi chứa từ "Số dư" -> Chuyển hướng nạp tiền
       if (msg.includes('Số dư') || msg.includes('ví')) {
-          setTimeout(() => navigate('/wallet'), 2500); 
+          setTimeout(() => history.push('/wallet'), 2500); 
       }
     } finally {
       setLoading(false);

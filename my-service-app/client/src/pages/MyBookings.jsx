@@ -1,13 +1,15 @@
 import { useEffect, useState, useContext } from 'react';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
-import { Calendar, Clock, User, CheckCircle, XCircle, Trash2 } from 'lucide-react';
+import { Calendar, Clock, User, CheckCircle, XCircle, Trash2, Navigation } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
+import FreeMapWithDirections from '../components/FreeMapWithDirections';
 
 const MyBookings = () => {
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [showMap, setShowMap] = useState(null);
     const { user, refreshUser } = useContext(AuthContext);
 
     useEffect(() => {
@@ -180,16 +182,39 @@ const MyBookings = () => {
                                         )}
 
                                         {booking.status === 'confirmed' && (
-                                            <button
-                                                onClick={() => handleUpdateStatus(booking._id, 'completed')}
-                                                className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition w-full justify-center"
-                                            >
-                                                <CheckCircle size={18} /> Xác nhận đã làm xong
-                                            </button>
+                                            <>
+                                                <button
+                                                    onClick={() => setShowMap(showMap === booking._id ? null : booking._id)}
+                                                    className="flex items-center gap-1 bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition"
+                                                >
+                                                    <Navigation size={18} /> Theo dõi
+                                                </button>
+                                                <button
+                                                    onClick={() => handleUpdateStatus(booking._id, 'completed')}
+                                                    className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition"
+                                                >
+                                                    <CheckCircle size={18} /> Xác nhận đã làm xong
+                                                </button>
+                                            </>
                                         )}
                                     </div>
                                 )}
                             </div>
+
+                            {/* BẢN ĐỒ THEO DÕI */}
+                            {showMap === booking._id && (
+                                <div className="w-full mt-4 pt-4 border-t border-gray-200">
+                                    <h4 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                        <Navigation size={20} className="text-green-600" />
+                                        Bản đồ chỉ đường đến khách hàng
+                                    </h4>
+                                    <FreeMapWithDirections
+                                        origin={user?.location?.lat && user?.location?.lng ? user.location : { lat: 10.8231, lng: 106.6297 }}
+                                        destination={booking.user?.location?.lat && booking.user?.location?.lng ? booking.user.location : { lat: 10.8700, lng: 106.8030 }}
+                                        showDirections={true}
+                                    />
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>

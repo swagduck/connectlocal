@@ -1,14 +1,17 @@
 import { useEffect, useState, useContext } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useHistory, Link } from 'react-router-dom';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import { MapPin, Clock, Star, MessageCircle, ShieldCheck, X, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import ReviewSection from '../components/ReviewSection';
+import ServiceMap from '../components/ServiceMap';
+import BookingMap from '../components/BookingMap';
+import RealTimeJobTracker from '../components/RealTimeJobTracker';
 
 const ServiceDetail = () => {
     const { id } = useParams();
-    const navigate = useNavigate();
+    const history = useHistory();
     const { user } = useContext(AuthContext);
 
     const [service, setService] = useState(null);
@@ -16,6 +19,8 @@ const ServiceDetail = () => {
     const [showModal, setShowModal] = useState(false);
     const [bookingDate, setBookingDate] = useState('');
     const [bookingNote, setBookingNote] = useState('');
+    const [selectedLocation, setSelectedLocation] = useState(null);
+    const [activeBooking, setActiveBooking] = useState(null);
 
     const fetchService = async () => {
         try {
@@ -23,7 +28,7 @@ const ServiceDetail = () => {
             setService(res.data.data);
         } catch (error) {
             toast.error("Không tìm thấy dịch vụ");
-            navigate('/');
+            history.push('/');
         } finally { setLoading(false); }
     };
 
@@ -34,29 +39,52 @@ const ServiceDetail = () => {
             try {
                 await api.delete(`/services/${id}`);
                 toast.success('Đã xóa dịch vụ!');
-                navigate('/');
+                history.push('/');
             } catch (error) { toast.error('Không thể xóa'); }
         }
     };
 
     const handleOpenBooking = () => {
-        if (!user) { toast.error("Vui lòng đăng nhập"); navigate('/login'); return; }
+        if (!user) { toast.error("Vui lòng đăng nhập"); history.push('/login'); return; }
         setShowModal(true);
+    };
+
+    const handleLocationSelect = (location) => {
+        setSelectedLocation(location);
     };
 
     const submitBooking = async (e) => {
         e.preventDefault();
         try {
-            await api.post('/bookings', { serviceId: service._id, date: bookingDate, note: bookingNote });
+            const bookingData = {
+                serviceId: service._id,
+                date: bookingDate,
+                note: bookingNote
+            };
+
+            // Add location if selected
+            if (selectedLocation) {
+                bookingData.location = selectedLocation;
+            }
+
+            const res = await api.post('/bookings', bookingData);
             setShowModal(false);
             toast.success("🎉 Đặt lịch thành công!");
-        } catch (error) { toast.error(error.response?.data?.message || "Đặt lịch thất bại"); }
+
+            // Set active booking for real-time tracking (for customer view)
+            if (res.data.data) {
+                setActiveBooking(res.data.data);
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || "Đặt lịch thất bại");
+            console.log('Booking error:', error);
+        }
     };
 
     const handleChat = async () => {
         if (!user) {
             toast.error("Vui lòng đăng nhập để nhắn tin");
-            navigate('/login');
+            history.push('/login');
             return;
         }
         if (user._id === service.user._id) {
@@ -65,7 +93,7 @@ const ServiceDetail = () => {
         }
         try {
             await api.post('/chat/conversation', { receiverId: service.user._id });
-            navigate('/chat');
+            history.push('/chat');
         } catch (error) {
             toast.error("Lỗi kết nối chat");
         }
@@ -155,16 +183,68 @@ const ServiceDetail = () => {
                 </div>
             </div>
 
+            {activeBooking && (
+                <div className="mt-8">
+                    <RealTimeJobTracker
+                        bookingId={activeBooking._id}
+                        customerId={activeBooking.customer}
+                        workerId={activeBooking.worker}
+                        isWorker={user?._id === activeBooking.worker}
+                        serviceLocation={service.location?.coordinates ? {
+                            lat: service.location.coordinates[1],
+                            lng: service.location.coordinates[0]
+                        } : null}
+                    />
+                </div>
+            )}
+
+            {/* Map Component */}
+            <div className="mt-8">
+                <ServiceMap service={service} />
+            </div>
+
             {showModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 relative">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 relative">
                         <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X size={24} /></button>
                         <h2 className="text-2xl font-bold text-gray-800 mb-4">Xác nhận đặt lịch</h2>
-                        <form onSubmit={submitBooking}>
-                            <div className="mb-4"><label className="block text-gray-700 font-medium mb-2">Chọn ngày giờ</label><input type="datetime-local" required className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" value={bookingDate} onChange={(e) => setBookingDate(e.target.value)} /></div>
-                            <div className="mb-6"><label className="block text-gray-700 font-medium mb-2">Ghi chú</label><textarea className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" rows="3" value={bookingNote} onChange={(e) => setBookingNote(e.target.value)}></textarea></div>
-                            <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition">Xác nhận</button>
-                        </form>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Booking Form */}
+                            <div>
+                                <form onSubmit={submitBooking}>
+                                    <div className="mb-4">
+                                        <label className="block text-gray-700 font-medium mb-2">Chọn ngày giờ</label>
+                                        <input
+                                            type="datetime-local"
+                                            required
+                                            className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                            value={bookingDate}
+                                            onChange={(e) => setBookingDate(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="mb-6">
+                                        <label className="block text-gray-700 font-medium mb-2">Ghi chú</label>
+                                        <textarea
+                                            className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                            rows="3"
+                                            value={bookingNote}
+                                            onChange={(e) => setBookingNote(e.target.value)}
+                                        ></textarea>
+                                    </div>
+                                    <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition">Xác nhận đặt lịch</button>
+                                </form>
+                            </div>
+
+                            {/* Map for Location Selection */}
+                            <div>
+                                <BookingMap
+                                    service={service}
+                                    onLocationSelect={handleLocationSelect}
+                                    showDirections={true}
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

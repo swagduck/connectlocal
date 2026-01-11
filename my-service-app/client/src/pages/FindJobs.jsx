@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useContext } from 'react';
 import api from '../services/api'; // Sử dụng api instance chuẩn
-import { Link, useNavigate } from 'react-router-dom';
-import { Search, MapPin, Clock, DollarSign, Calendar, MessageCircle } from 'lucide-react';
+import { Link, useHistory } from 'react-router-dom';
+import { Search, MapPin, Clock, DollarSign, Calendar, MessageCircle, UserCheck, CheckCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { AuthContext } from '../context/AuthContext';
 
 const FindJobs = () => {
   const { user } = useContext(AuthContext);
-  const navigate = useNavigate();
+  const history = useHistory();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -47,16 +47,63 @@ const FindJobs = () => {
   const handleStartChat = async (targetUserId) => {
       if (!user) {
           toast.error("Vui lòng đăng nhập để chat!");
-          return navigate('/login');
+          return history.push('/login');
       }
       try {
           // Gọi API tạo/lấy phòng chat
           const res = await api.post('/chat', { userId: targetUserId });
           // Chuyển hướng sang trang Chat (có thể truyền state để mở đúng tab chat)
-          navigate('/chat', { state: { conversation: res.data } });
+          history.push('/chat', { state: { conversation: res.data } });
       } catch (error) {
           toast.error("Lỗi kết nối chat");
       }
+  };
+
+  // 👇 HÀM XỬ LÝ ỨNG TUYỂN
+  const handleApply = async (requestId) => {
+      if (!user) {
+          toast.error("Vui lòng đăng nhập để ứng tuyển!");
+          return history.push('/login');
+      }
+
+      if (user.role !== 'provider') {
+          toast.error("Chỉ thợ mới có thể ứng tuyển!");
+          return;
+      }
+
+      if (!window.confirm("Bạn có chắc muốn ứng tuyển cho yêu cầu này không?")) {
+          return;
+      }
+
+      try {
+          setLoading(true);
+          const res = await api.put(`/requests/${requestId}/apply`);
+          toast.success(res.data?.message || "✅ Ứng tuyển thành công! Khách hàng sẽ xem hồ sơ của bạn.");
+          // Refresh danh sách để cập nhật trạng thái
+          await fetchRequests();
+      } catch (error) {
+          const errorMessage = error.response?.data?.message || error.response?.data?.error || "Lỗi ứng tuyển";
+          toast.error(errorMessage);
+          
+          // Nếu chưa có dịch vụ, gợi ý tạo dịch vụ
+          if (errorMessage.includes('dịch vụ')) {
+              setTimeout(() => {
+                  if (window.confirm("Bạn chưa có dịch vụ nào. Bạn muốn tạo dịch vụ ngay bây giờ?")) {
+                      history.push('/create-service');
+                  }
+              }, 2000);
+          }
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  // 👇 KIỂM TRA THỢ ĐÃ ỨNG TUYỂN CHƯA
+  const hasApplied = (request) => {
+      if (!user || !request.applicants) return false;
+      return request.applicants.some(applicant => 
+          (typeof applicant === 'object' ? applicant._id : applicant) === user._id
+      );
   };
 
   return (
@@ -154,27 +201,65 @@ const FindJobs = () => {
               </div>
 
               {/* Footer Card */}
-              <div className="border-t border-gray-100 p-4 bg-gray-50 rounded-b-2xl flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <img 
-                    src={req.user?.avatar || "https://ui-avatars.com/api/?background=random&name=" + req.user?.name} 
-                    alt={req.user?.name}
-                    className="w-9 h-9 rounded-full border border-white shadow-sm"
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold text-gray-900">{req.user?.name}</span>
-                    <span className="text-xs text-gray-500">Khách hàng</span>
+              <div className="border-t border-gray-100 p-4 bg-gray-50 rounded-b-2xl">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <img 
+                      src={req.user?.avatar || "https://ui-avatars.com/api/?background=random&name=" + req.user?.name} 
+                      alt={req.user?.name}
+                      className="w-9 h-9 rounded-full border border-white shadow-sm"
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-gray-900">{req.user?.name}</span>
+                      <span className="text-xs text-gray-500">Khách hàng</span>
+                    </div>
                   </div>
+                  
+                  {/* Số lượng ứng viên */}
+                  {req.applicants && req.applicants.length > 0 && (
+                    <div className="text-xs text-gray-500 flex items-center gap-1">
+                      <UserCheck size={14} />
+                      <span>{req.applicants.length} ứng viên</span>
+                    </div>
+                  )}
                 </div>
-                
-                {/* NÚT CHAT VỚI KHÁCH */}
-                {user?._id !== req.user?._id && (
+
+                {/* NÚT ỨNG TUYỂN / TRAO ĐỔI */}
+                {user && user.role === 'provider' && user._id !== req.user?._id && (
+                  <div className="flex gap-2">
+                    {hasApplied(req) ? (
+                      <button 
+                        disabled
+                        className="flex-1 bg-green-100 text-green-700 px-4 py-2 rounded-xl font-bold text-sm border-2 border-green-300 flex items-center justify-center gap-2 cursor-not-allowed"
+                      >
+                        <CheckCircle size={16} /> Đã ứng tuyển
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => handleApply(req._id)}
+                        disabled={loading}
+                        className="flex-1 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <UserCheck size={16} /> Ứng tuyển ngay
+                      </button>
+                    )}
                     <button 
-                        onClick={() => handleStartChat(req.user?._id)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-md transition flex items-center gap-2"
+                      onClick={() => handleStartChat(req.user?._id)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-md transition flex items-center gap-2"
                     >
-                        <MessageCircle size={16} /> Trao đổi
+                      <MessageCircle size={16} /> Chat
                     </button>
+                  </div>
+                )}
+                
+                {/* NÚT CHO USER KHÔNG PHẢI THỢ */}
+                {user && user.role !== 'provider' && user._id !== req.user?._id && (
+                  <button 
+                    onClick={() => handleStartChat(req.user?._id)}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-md transition flex items-center justify-center gap-2"
+                  >
+                    <MessageCircle size={16} /> Trao đổi với khách hàng
+                  </button>
                 )}
               </div>
             </div>

@@ -1,7 +1,7 @@
 const dotenv = require("dotenv");
 dotenv.config();
 
-const app = require("./src/app");
+const { app, initializeSocket } = require("./src/app");
 const mongoose = require("mongoose");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -14,12 +14,17 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: process.env.CLIENT_URL || "http://localhost:5173",
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"]
   },
 });
 
 // Initialize socket handler
 socketHandler(io);
+
+// Initialize socket.io in friend controller
+initializeSocket(io);
 
 // --- KẾT NỐI DB & CHẠY SERVER ---
 const PORT = process.env.PORT || 5000;

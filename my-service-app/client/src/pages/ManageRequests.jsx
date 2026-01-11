@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { Star, CheckCircle, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
+import { useHistory } from 'react-router-dom';
 
 const ManageRequests = () => {
     const [requests, setRequests] = useState([]);
-    const navigate = useNavigate();
+    const history = useHistory();
 
     useEffect(() => {
         fetchMyRequests();
@@ -18,7 +18,8 @@ const ManageRequests = () => {
             // Lọc chỉ lấy những cái còn mở (closed nghĩa là đã chọn thợ rồi)
             setRequests(res.data.data.filter(r => r.status === 'open'));
         } catch (error) {
-            console.error(error);
+            console.error("Lỗi tải yêu cầu:", error);
+            toast.error(error.response?.data?.message || "Không thể tải danh sách yêu cầu. Vui lòng thử lại.");
         }
     };
 
@@ -27,7 +28,7 @@ const ManageRequests = () => {
         try {
             await api.put(`/requests/${requestId}/choose`, { providerId });
             toast.success("Đã chọn thợ! Kiểm tra mục Đơn hàng.");
-            navigate('/my-bookings'); // Chuyển ngay sang trang đơn hàng
+            history.push('/my-bookings'); // Chuyển ngay sang trang đơn hàng
         } catch (error) {
             toast.error(error.response?.data?.message || "Lỗi khi chọn");
         }

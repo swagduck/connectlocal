@@ -5,6 +5,32 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>client</title>
+    <script>
+      // Unregister all service workers to prevent conflicts in development
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          registrations.forEach(function(registration) {
+            registration.unregister().then(function(success) {
+              if (success) {
+                console.log('Service Worker unregistered:', registration.scope);
+              }
+            }).catch(function(error) {
+              console.error('Error unregistering service worker:', error);
+            });
+          });
+          // Also clear all caches
+          if ('caches' in window) {
+            caches.keys().then(function(cacheNames) {
+              cacheNames.forEach(function(cacheName) {
+                caches.delete(cacheName);
+              });
+            });
+          }
+        }).catch(function(error) {
+          console.error('Error getting service worker registrations:', error);
+        });
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

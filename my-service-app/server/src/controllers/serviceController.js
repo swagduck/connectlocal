@@ -1,4 +1,5 @@
 const Service = require("../models/Service");
+const { getCoordinatesFromAddress } = require("../utils/geocoding");
 
 // @desc    Tạo dịch vụ mới (Full option)
 exports.createService = async (req, res, next) => {
@@ -21,6 +22,9 @@ exports.createService = async (req, res, next) => {
       throw new Error("Vui lòng nhập đủ: Tên, Danh mục, Giá và Địa chỉ");
     }
 
+    // Get coordinates from address
+    const coordinates = getCoordinatesFromAddress(address);
+
     const service = await Service.create({
       user: req.user.id,
       title,
@@ -33,6 +37,10 @@ exports.createService = async (req, res, next) => {
       location: {
         address: address, // Lưu vào object location
         city: "Hồ Chí Minh", // Tạm thời hardcode hoặc lấy từ client gửi lên
+        coordinates: {
+          type: 'Point',
+          coordinates: [coordinates[1], coordinates[0]] // MongoDB uses [longitude, latitude]
+        }
       },
       images: images || [],
     });
@@ -46,14 +54,31 @@ exports.createService = async (req, res, next) => {
 // @desc    Lấy danh sách dịch vụ (Tìm kiếm & Lọc)
 exports.getServices = async (req, res, next) => {
   try {
-    const { keyword, category } = req.query;
+    const { keyword, category, lat, lng, radius } = req.query;
     let query = {};
 
+    // Text-based search
     if (keyword) {
       query.title = { $regex: keyword, $options: "i" };
     }
     if (category) {
       query.category = category;
+    }
+
+    // Location-based search (radius)
+    if (lat && lng && radius) {
+      const userCoordinates = [parseFloat(lng), parseFloat(lat)]; // MongoDB uses [longitude, latitude]
+      const radiusInMeters = parseFloat(radius) * 1000; // Convert km to meters
+      
+      query['location.coordinates'] = {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: userCoordinates
+          },
+          $maxDistance: radiusInMeters
+        }
+      };
     }
 
     const services = await Service.find(query)

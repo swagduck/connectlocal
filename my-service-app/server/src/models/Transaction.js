@@ -5,7 +5,10 @@ const transactionSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: function() {
+        // Chỉ required khi không phải transaction commission (system transaction)
+        return this.type !== "commission";
+      },
     },
     amount: {
       type: Number,
@@ -13,7 +16,7 @@ const transactionSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["deposit", "payment", "refund", "withdraw", "earning"], // nạp, thanh toán, hoàn tiền, rút, thu nhập
+      enum: ["deposit", "payment", "refund", "withdraw", "earning", "commission"], // nạp, thanh toán, hoàn tiền, rút, thu nhập, phí nền tảng
       required: true,
     },
     status: {
@@ -28,8 +31,18 @@ const transactionSchema = new mongoose.Schema(
     description: String,
     momoOrderId: String, // Mã đơn hàng phía MoMo trả về (để đối soát)
     momoRequestId: String,
+    bookingId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Booking",
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
+
+// Index for faster queries
+transactionSchema.index({ type: 1, status: 1 });
+transactionSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model("Transaction", transactionSchema);

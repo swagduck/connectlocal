@@ -1,15 +1,15 @@
 import React from 'react';
 import { MapPin, Star, Clock, Award, Sparkles } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useHistory } from 'react-router-dom';
 
 const ServiceCard = ({ service }) => {
-    const navigate = useNavigate();
+    const history = useHistory();
 
     // Hàm xử lý khi bấm vào Avatar/Tên thợ
     const handleProfileClick = (e) => {
         e.preventDefault(); // Chặn hành vi Link mặc định
         e.stopPropagation(); // Chặn sự kiện nổi bọt lên thẻ cha
-        navigate(`/u/${service.user?._id}`);
+        history.push(`/u/${service.user?._id}`);
     };
 
     return (
