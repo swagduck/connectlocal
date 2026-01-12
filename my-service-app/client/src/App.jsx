@@ -4,7 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import { useContext } from 'react';
 import { SocketProvider, SocketContext } from './context/SocketContext';
-import { MessageSquare, Wallet as WalletIcon, Users, Bell } from 'lucide-react';
+import { MessageSquare, Wallet as WalletIcon, Users, Bell, Bot } from 'lucide-react';
 import './styles/animations.css';
 import NotificationBadge from './components/NotificationBadge';
 
@@ -27,6 +27,7 @@ const FriendsList = lazy(() => import('./pages/FriendsList'));
 const FriendRequests = lazy(() => import('./pages/FriendRequests'));
 const FriendRequestsPage = lazy(() => import('./pages/FriendRequestsPage'));
 const Notifications = lazy(() => import('./pages/Notifications'));
+const AIPage = lazy(() => import('./pages/AIPage'));
 
 // --- COMPONENT NAVBAR RIÊNG BIỆT ---
 const Navbar = () => {
@@ -54,6 +55,10 @@ const Navbar = () => {
         <div className="space-x-4 flex items-center">
           <Link to="/" className="text-gray-600 hover:text-blue-500 font-medium hidden sm:block transition-all duration-300 hover:scale-105">Trang chủ</Link>
           <Link to="/find-jobs" className="text-gray-600 hover:text-blue-500 font-medium hidden sm:block transition-all duration-300 hover:scale-105">Việc tìm người</Link>
+          <Link to="/ai" className="text-gray-600 hover:text-purple-500 font-medium hidden sm:block transition-all duration-300 hover:scale-105 flex items-center gap-1">
+            <Bot size={16} />
+            AI Services
+          </Link>
 
           {user ? (
             <div className="flex items-center gap-4">
@@ -177,6 +182,7 @@ function App() {
                 <Route exact path="/friends" component={FriendsList} />
                 <Route path="/friends/requests" component={FriendRequests} />
                 <Route path="/friends/page" component={FriendRequestsPage} />
+                <Route path="/ai" component={AIPage} />
               </Switch>
             </Suspense>
             <Toaster position="bottom-right" toastOptions={{ duration: 3000, style: { background: '#333', color: '#fff' } }} />

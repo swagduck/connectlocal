@@ -21,6 +21,7 @@ const transactionRoutes = require("./routes/transactionRoutes");
 // 👇 1. IMPORT PAYMENT ROUTES TẠI ĐÂY
 const paymentRoutes = require("./routes/paymentRoutes");
 const friendRoutes = require("./routes/friendRoutes");
+const aiRoutes = require("./routes/ai");
 const { setSocketIO } = require("./controllers/friendController");
 const socketHandler = require("./utils/socket");
 
@@ -106,6 +107,7 @@ app.use("/api/transactions", transactionRoutes);
 // 👇 2. ĐĂNG KÝ ROUTE PAYMENT (Đặt trước notFound)
 app.use("/api/payment", paymentRoutes);
 app.use("/api/friends", friendRoutes);
+app.use("/api/ai", aiRoutes);
 
 // Add logging middleware for debugging
 app.use("/api/chat/messages", (req, res, next) => {
