@@ -1,5 +1,8 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Service = require('../src/models/Service');
+const config = require('../src/config');
+const costManagementService = require('../src/services/costManagementService');
+const apiCacheService = require('../src/services/apiCacheService');
 
 class AIService {
   constructor() {
@@ -69,23 +72,44 @@ class AIService {
     }
 
     try {
-      console.log('Sending prompt to AI:', prompt.substring(0, 100) + '...');
+      // Check cost and rate limits before making API call
+      await costManagementService.checkApiCallLimits('ai', 'gemini');
+      
+      // Check cache first
+      const cacheKey = { prompt: prompt.substring(0, 200), ...options };
+      const cached = await apiCacheService.get('ai', 'gemini', cacheKey);
+      if (cached) {
+        console.log('🎯 AI cache hit for generateText');
+        return cached;
+      }
+
+      console.log('🌐 Sending prompt to AI:', prompt.substring(0, 100) + '...');
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
       
-      console.log('AI response received successfully');
-      return {
+      const aiResponse = {
         success: true,
         text: text,
         usage: response.usageMetadata || null
       };
-    } catch (error) {
-      console.error('Error generating text:', error.message);
+
+      // Record cost and cache the result
+      const cost = config.externalApis.ai.gemini.cost.perRequest;
+      costManagementService.recordUsage('ai', 'gemini', cost);
       
-      // If quota exceeded, return mock card response
+      // Cache successful responses
+      await apiCacheService.set('ai', 'gemini', aiResponse, cacheKey);
+      
+      console.log('✅ AI response received and cached');
+      return aiResponse;
+      
+    } catch (error) {
+      console.error('❌ Error generating text:', error.message);
+      
+      // Handle quota exceeded with fallback response
       if (error.message.includes('quota') || error.message.includes('429')) {
-        console.log('Quota exceeded, returning mock card response');
+        console.log('⚠️ Quota exceeded, returning fallback response');
         return {
           success: true,
           text: `Chào bạn, tôi là trợ lý AI chuyên nghiệp của nền tảng dịch vụ.
@@ -143,6 +167,18 @@ Make it sound professional and trustworthy.`;
   }
 
   async chatWithAI(message, conversationHistory = []) {
+    // Check cache for common queries
+    const cacheKey = { 
+      message: message.substring(0, 100), 
+      historyLength: conversationHistory.length 
+    };
+    
+    const cached = await apiCacheService.get('ai', 'chat', cacheKey);
+    if (cached) {
+      console.log('🎯 AI chat cache hit');
+      return cached;
+    }
+
     // Get real service data for context
     const serviceStats = await this.getServiceStats();
     const allServices = await this.getServiceData();
@@ -154,6 +190,8 @@ Make it sound professional and trustworthy.`;
                                lowerMessage.includes('hiển thị') ||
                                lowerMessage.includes('cho tôi xem') ||
                                lowerMessage.includes('có dịch vụ');
+    
+    let response;
     
     if (isServiceListQuery && allServices.length > 0) {
       // Return guaranteed correct card format
@@ -171,35 +209,34 @@ Make it sound professional and trustworthy.`;
       
       cardResponse += `\nBạn có thể click vào tên dịch vụ để xem chi tiết và đặt lịch hẹn!`;
       
-      return {
+      response = {
         success: true,
         text: cardResponse
       };
-    }
-    
-    // For other queries, use regular AI
-    const historyContext = conversationHistory.length > 0 
-      ? `Previous conversation:\n${conversationHistory.map(h => `${h.role}: ${h.message}`).join('\n')}\n\n`
-      : '';
+    } else {
+      // For other queries, use regular AI with context
+      const historyContext = conversationHistory.length > 0 
+        ? `Previous conversation:\n${conversationHistory.map(h => `${h.role}: ${h.message}`).join('\n')}\n\n`
+        : '';
 
-    // Create context with real data
-    let serviceContext = `DỮ LIỆU DỊCH VỤ THỰC TẾ:\n\n`;
-    serviceContext += `Thống kê dịch vụ trên nền tảng:\n`;
-    serviceStats.forEach(stat => {
-      serviceContext += `- ${stat._id}: ${stat.count} dịch vụ, giá trung bình: ${stat.avgPrice?.toFixed(0) || 0} VNĐ, đánh giá trung bình: ${stat.avgRating?.toFixed(1) || 0}/5\n`;
-    });
-    
-    if (allServices.length > 0) {
-      serviceContext += `\nMột số dịch vụ nổi bật:\n`;
-      allServices.slice(0, 3).forEach((service, index) => {
-        serviceContext += `${index + 1}. ${service.title} (${service.category}) - ${service.price} VNĐ/${service.priceUnit} - Rating: ${service.averageRating}/5\n`;
-        serviceContext += `   ID: ${service._id}\n`;
+      // Create context with real data
+      let serviceContext = `DỮ LIỆU DỊCH VỤ THỰC TẾ:\n\n`;
+      serviceContext += `Thống kê dịch vụ trên nền tảng:\n`;
+      serviceStats.forEach(stat => {
+        serviceContext += `- ${stat._id}: ${stat.count} dịch vụ, giá trung bình: ${stat.avgPrice?.toFixed(0) || 0} VNĐ, đánh giá trung bình: ${stat.avgRating?.toFixed(1) || 0}/5\n`;
       });
-    }
-    
-    serviceContext += `\nTổng số dịch vụ trên nền tảng: ${allServices.length}\n`;
+      
+      if (allServices.length > 0) {
+        serviceContext += `\nMột số dịch vụ nổi bật:\n`;
+        allServices.slice(0, 3).forEach((service, index) => {
+          serviceContext += `${index + 1}. ${service.title} (${service.category}) - ${service.price} VNĐ/${service.priceUnit} - Rating: ${service.averageRating}/5\n`;
+          serviceContext += `   ID: ${service._id}\n`;
+        });
+      }
+      
+      serviceContext += `\nTổng số dịch vụ trên nền tảng: ${allServices.length}\n`;
 
-    const prompt = `${historyContext}
+      const prompt = `${historyContext}
 ${serviceContext}
 
 User: ${message}
@@ -224,7 +261,13 @@ KHÔNG ĐƯỢC thay đổi format này. Phải copy đúng cấu trúc trên.
 
 Nếu người dùng hỏi về dịch vụ cụ thể, hãy kiểm tra xem có dịch vụ đó không và đưa ra thông tin chi tiết. Nếu không có, hãy nói rõ là hiện tại chưa có dịch vụ đó trên nền tảng.`;
 
-    return await this.generateText(prompt);
+      response = await this.generateText(prompt);
+    }
+
+    // Cache the response (shorter TTL for chat)
+    await apiCacheService.set('ai', 'chat', response, cacheKey, 1800); // 30 minutes
+    
+    return response;
   }
 
   isInitialized() {
@@ -235,8 +278,26 @@ Nếu người dùng hỏi về dịch vụ cụ thể, hãy kiểm tra xem có 
     return {
       initialized: this.model !== null,
       service: 'Google AI (Gemini Flash)',
-      mode: 'live'
+      mode: 'live',
+      costStats: costManagementService.getUsageStats(),
+      cacheStats: apiCacheService.getStats(),
     };
+  }
+
+  // Get cost and usage statistics
+  getCostStats() {
+    return costManagementService.getUsageStats();
+  }
+
+  // Get cache statistics
+  getCacheStats() {
+    return apiCacheService.getStats();
+  }
+
+  // Clear AI cache
+  async clearCache() {
+    await apiCacheService.clearService('ai');
+    console.log('🧹 AI cache cleared');
   }
 }
 

@@ -18,6 +18,11 @@ export const friendService = {
   // Send friend request
   sendRequest: async (recipientId) => {
     try {
+      // Validate recipientId
+      if (!recipientId) {
+        throw new Error('Recipient ID is required');
+      }
+
       const response = await axios.post(
         `${API_URL}/friends/request`,
         { recipientId },

@@ -5,6 +5,7 @@ const compression = require('compression');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
+const cookieParser = require('cookie-parser');
 const { xssProtection, createRateLimit } = require('./middleware/validationMiddleware');
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
@@ -90,6 +91,7 @@ app.use(xssProtection);
 
 // Performance middleware
 app.use(compression());
+app.use(cookieParser()); // Add cookie parser for secure authentication
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan("combined"));

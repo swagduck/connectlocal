@@ -7,6 +7,16 @@ const FriendButton = ({ userId, requestId, onStatusChange }) => {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
 
+    // Validate userId prop
+    if (!userId) {
+        console.error('FriendButton: userId prop is required');
+        return (
+            <button className="px-4 py-2 bg-gray-200 text-gray-500 rounded-lg cursor-not-allowed">
+                Invalid User
+            </button>
+        );
+    }
+
     // Fetch friend status on component mount
     useEffect(() => {
         fetchFriendStatus();

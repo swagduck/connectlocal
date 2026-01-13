@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Friend = require("../models/Friend");
 const User = require("../models/User");
 
@@ -16,6 +17,22 @@ const sendFriendRequest = async (req, res) => {
     const requesterId = req.user.id;
 
     console.log('📝 Request data:', { recipientId, requesterId });
+
+    // Validate recipientId
+    if (!recipientId) {
+      return res.status(400).json({
+        success: false,
+        message: "Recipient ID is required",
+      });
+    }
+
+    // Validate recipientId format
+    if (!mongoose.Types.ObjectId.isValid(recipientId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid recipient ID format",
+      });
+    }
 
     // Kiểm tra không thể tự kết bạn
     if (requesterId === recipientId) {
@@ -114,6 +131,25 @@ const sendFriendRequest = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Lỗi gửi lời mời kết bạn:", error);
+    
+    // Handle MongoDB duplicate key error
+    if (error.code === 11000) {
+      console.log("🔍 Duplicate key error:", error.keyPattern);
+      return res.status(400).json({
+        success: false,
+        message: "Đã tồn tại lời mời kết bạn hoặc mối quan hệ giữa hai người dùng này",
+      });
+    }
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: "Validation error: " + messages.join(', '),
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: "Lỗi server",

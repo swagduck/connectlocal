@@ -1,7 +1,9 @@
 const User = require("../models/User");
+const RefreshToken = require("../models/RefreshToken");
 const jwt = require("jsonwebtoken");
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const cookie = require('cookie');
 
 // Blacklist để lưu token đã bị revoke
 const tokenBlacklist = new Set();
@@ -12,11 +14,35 @@ const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_TIME = 15 * 60 * 1000; // 15 phút
 
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "15m" }); // Short-lived access token
 };
 
 const generateRefreshToken = () => {
   return crypto.randomBytes(64).toString('hex');
+};
+
+// Cookie settings for security
+const getCookieOptions = () => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  return {
+    httpOnly: true, // Prevents XSS attacks
+    secure: isProduction, // Only send over HTTPS in production
+    sameSite: 'strict', // CSRF protection
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    path: '/',
+  };
+};
+
+// Set refresh token cookie
+const setRefreshTokenCookie = (res, refreshToken) => {
+  const cookieOptions = getCookieOptions();
+  res.cookie('refreshToken', refreshToken, cookieOptions);
+};
+
+// Clear refresh token cookie
+const clearRefreshTokenCookie = (res) => {
+  const cookieOptions = getCookieOptions();
+  res.clearCookie('refreshToken', cookieOptions);
 };
 
 // @desc    Đăng ký
@@ -47,19 +73,36 @@ exports.register = async (req, res, next) => {
     }
     
     const user = await User.create({ name, email, password, phone, role });
-    const token = generateToken(user._id);
-    const refreshToken = generateRefreshToken();
     
+    // Generate tokens
+    const accessToken = generateToken(user._id);
+    const refreshTokenString = generateRefreshToken();
+    
+    // Store refresh token in database
+    const refreshToken = await RefreshToken.create({
+      user: user._id,
+      token: refreshTokenString,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      userAgent: req.get('User-Agent'),
+      ipAddress: req.ip,
+    });
+    
+    // Set refresh token in HttpOnly cookie
+    setRefreshTokenCookie(res, refreshTokenString);
+    
+    // Return user data and access token only (no refresh token in body)
     res.status(201).json({
       success: true,
-      token,
-      refreshToken,
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      avatar: user.avatar,
-      walletBalance: user.walletBalance || 0, // Thêm wallet balance vào response
+      token: accessToken, // Only access token in response body
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+        walletBalance: user.walletBalance || 0,
+      },
+      message: "Đăng ký thành công"
     });
   } catch (error) {
     next(error);
@@ -107,21 +150,40 @@ exports.login = async (req, res, next) => {
     // Reset attempts on successful login
     loginAttempts.delete(clientIP);
     
-    const token = generateToken(user._id);
-    const refreshToken = generateRefreshToken();
+    // Generate tokens
+    const accessToken = generateToken(user._id);
+    const refreshTokenString = generateRefreshToken();
     
+    // Revoke all existing refresh tokens for this user (token rotation)
+    await RefreshToken.revokeAllUserTokens(user._id);
+    
+    // Store new refresh token in database
+    const refreshToken = await RefreshToken.create({
+      user: user._id,
+      token: refreshTokenString,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      userAgent: req.get('User-Agent'),
+      ipAddress: req.ip,
+    });
+    
+    // Set refresh token in HttpOnly cookie
+    setRefreshTokenCookie(res, refreshTokenString);
+    
+    // Return user data and access token only (no refresh token in body)
     res.status(200).json({
       success: true,
-      token,
-      refreshToken,
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      avatar: user.avatar,
-      phone: user.phone,
-      address: user.address,
-      walletBalance: user.walletBalance || 0, // Thêm wallet balance vào response
+      token: accessToken, // Only access token in response body
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+        phone: user.phone,
+        address: user.address,
+        walletBalance: user.walletBalance || 0,
+      },
+      message: "Đăng nhập thành công"
     });
   } catch (error) {
     next(error);
@@ -132,10 +194,30 @@ exports.login = async (req, res, next) => {
 exports.logout = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
+    
+    // Add access token to blacklist
     if (token) {
       tokenBlacklist.add(token);
     }
-    res.status(200).json({ success: true, message: "Đăng xuất thành công" });
+    
+    // Get refresh token from cookie
+    const refreshToken = req.cookies.refreshToken;
+    
+    // Revoke refresh token in database
+    if (refreshToken) {
+      const storedToken = await RefreshToken.findOne({ token: refreshToken });
+      if (storedToken) {
+        await storedToken.revoke(req.user?._id);
+      }
+    }
+    
+    // Clear refresh token cookie
+    clearRefreshTokenCookie(res);
+    
+    res.status(200).json({ 
+      success: true, 
+      message: "Đăng xuất thành công" 
+    });
   } catch (error) {
     next(error);
   }
@@ -144,30 +226,86 @@ exports.logout = async (req, res, next) => {
 // @desc    Refresh token
 exports.refreshToken = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
+    // Get refresh token from HttpOnly cookie
+    const refreshToken = req.cookies.refreshToken;
     
     if (!refreshToken) {
-      return res.status(401).json({ success: false, message: "Refresh token required" });
+      return res.status(401).json({ 
+        success: false, 
+        message: "Refresh token required - Please login again" 
+      });
     }
     
-    // Verify refresh token (you should store refresh tokens in database)
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    const user = await User.findById(decoded.id);
+    // Find refresh token in database
+    const storedToken = await RefreshToken.findOne({ token: refreshToken });
+    
+    if (!storedToken || !storedToken.isValid()) {
+      // Clear invalid cookie
+      clearRefreshTokenCookie(res);
+      return res.status(401).json({ 
+        success: false, 
+        message: "Invalid or expired refresh token - Please login again" 
+      });
+    }
+    
+    // Get user from stored token
+    const user = await User.findById(storedToken.user);
     
     if (!user) {
-      return res.status(401).json({ success: false, message: "Invalid refresh token" });
+      await storedToken.revoke();
+      clearRefreshTokenCookie(res);
+      return res.status(401).json({ 
+        success: false, 
+        message: "User not found - Please login again" 
+      });
     }
     
-    const newToken = generateToken(user._id);
-    const newRefreshToken = generateRefreshToken();
+    // Check if user is banned
+    if (user.banned) {
+      await storedToken.revoke();
+      clearRefreshTokenCookie(res);
+      return res.status(403).json({ 
+        success: false, 
+        message: "Tài khoản của bạn đã bị khóa" 
+      });
+    }
     
+    // Generate new tokens
+    const newAccessToken = generateToken(user._id);
+    const newRefreshTokenString = generateRefreshToken();
+    
+    // Revoke old refresh token (token rotation)
+    await storedToken.revoke(user._id);
+    
+    // Create new refresh token
+    const newRefreshToken = await RefreshToken.create({
+      user: user._id,
+      token: newRefreshTokenString,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      userAgent: req.get('User-Agent'),
+      ipAddress: req.ip,
+    });
+    
+    // Update last used timestamp for old token
+    storedToken.lastUsedAt = new Date();
+    await storedToken.save();
+    
+    // Set new refresh token in HttpOnly cookie
+    setRefreshTokenCookie(res, newRefreshTokenString);
+    
+    // Return new access token only
     res.status(200).json({
       success: true,
-      token: newToken,
-      refreshToken: newRefreshToken
+      token: newAccessToken,
+      message: "Token refreshed successfully"
     });
   } catch (error) {
-    res.status(401).json({ success: false, message: "Invalid refresh token" });
+    console.error('Refresh token error:', error);
+    clearRefreshTokenCookie(res);
+    res.status(401).json({ 
+      success: false, 
+      message: "Token refresh failed - Please login again" 
+    });
   }
 };
 
@@ -216,3 +354,101 @@ exports.getPublicProfile = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Revoke all user tokens (Admin only or user self)
+exports.revokeAllTokens = async (req, res, next) => {
+  try {
+    const userId = req.params.id || req.user._id;
+    
+    // Check permissions
+    if (userId !== req.user._id && req.user.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Bạn không có quyền thu hồi token này" 
+      });
+    }
+    
+    // Revoke all refresh tokens for user
+    const result = await RefreshToken.revokeAllUserTokens(userId, req.user._id);
+    
+    // Clear current cookie
+    clearRefreshTokenCookie(res);
+    
+    console.log(`🔒 Revoked ${result.modifiedCount} refresh tokens for user ${userId}`);
+    
+    res.status(200).json({ 
+      success: true, 
+      message: `Đã thu hồi ${result.modifiedCount} token. Vui lòng đăng nhập lại.` 
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get active sessions (Admin only or user self)
+exports.getActiveSessions = async (req, res, next) => {
+  try {
+    const userId = req.params.id || req.user._id;
+    
+    // Check permissions
+    if (userId !== req.user._id && req.user.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Bạn không có quyền xem session này" 
+      });
+    }
+    
+    // Get all valid refresh tokens for user
+    const tokens = await RefreshToken.find({
+      user: userId,
+      isRevoked: false,
+      expiresAt: { $gt: new Date() }
+    })
+    .select('token userAgent ipAddress createdAt lastUsedAt expiresAt')
+    .sort('-createdAt');
+    
+    res.status(200).json({ 
+      success: true, 
+      count: tokens.length,
+      data: tokens 
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Cleanup expired tokens (Admin only or scheduled job)
+exports.cleanupExpiredTokens = async (req, res, next) => {
+  try {
+    // Only admin can trigger manually
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Chỉ admin mới có quyền thực hiện tác vụ này" 
+      });
+    }
+    
+    const result = await RefreshToken.cleanupExpired();
+    
+    console.log(`🧹 Cleaned up ${result.deletedCount} expired/revoked tokens`);
+    
+    res.status(200).json({ 
+      success: true, 
+      message: `Đã dọn dẹp ${result.deletedCount} token hết hạn/thu hồi` 
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Schedule automatic cleanup (run every 24 hours)
+setInterval(async () => {
+  try {
+    const result = await RefreshToken.cleanupExpired();
+    if (result.deletedCount > 0) {
+      console.log(`🧹 Auto-cleanup: Removed ${result.deletedCount} expired tokens`);
+    }
+  } catch (error) {
+    console.error('❌ Auto-cleanup error:', error);
+  }
+}, 24 * 60 * 60 * 1000); // 24 hours

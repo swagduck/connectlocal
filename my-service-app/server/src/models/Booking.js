@@ -45,10 +45,72 @@ const BookingSchema = new mongoose.Schema({
     required: true,
     default: 0, // Số tiền thợ nhận được
   },
+  // Soft delete fields
+  isDeleted: {
+    type: Boolean,
+    default: false,
+    select: false // Mặc định không include trong queries
+  },
+  deletedAt: {
+    type: Date,
+    select: false // Mặc định không include trong queries
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    select: false // Mặc định không include trong queries
+  },
+  deletionReason: {
+    type: String,
+    select: false // Mặc định không include trong queries
+  },
   createdAt: {
     type: Date,
     default: Date.now,
   },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
 });
+
+// Middleware để tự động cập nhật updatedAt
+BookingSchema.pre('save', function(next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+// Static method để tìm cả deleted và non-deleted records
+BookingSchema.statics.findWithDeleted = function(filter = {}) {
+  return this.find(filter);
+};
+
+// Static method để chỉ tìm deleted records
+BookingSchema.statics.findDeleted = function(filter = {}) {
+  return this.find({ ...filter, isDeleted: true });
+};
+
+// Static method để chỉ tìm non-deleted records (default)
+BookingSchema.statics.findNotDeleted = function(filter = {}) {
+  return this.find({ ...filter, isDeleted: false });
+};
+
+// Instance method để soft delete
+BookingSchema.methods.softDelete = function(deletedBy, reason = '') {
+  this.isDeleted = true;
+  this.deletedAt = new Date();
+  this.deletedBy = deletedBy;
+  this.deletionReason = reason;
+  return this.save();
+};
+
+// Instance method để restore
+BookingSchema.methods.restore = function() {
+  this.isDeleted = false;
+  this.deletedAt = undefined;
+  this.deletedBy = undefined;
+  this.deletionReason = undefined;
+  return this.save();
+};
 
 module.exports = mongoose.model("Booking", BookingSchema);
