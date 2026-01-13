@@ -4,17 +4,14 @@ const jwt = require("jsonwebtoken");
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const cookie = require('cookie');
+const config = require("../config");
+const rateLimitService = require("../services/rateLimitService");
 
 // Blacklist để lưu token đã bị revoke
 const tokenBlacklist = new Set();
 
-// Rate limiting cho login attempts
-const loginAttempts = new Map();
-const MAX_LOGIN_ATTEMPTS = 5;
-const LOCK_TIME = 15 * 60 * 1000; // 15 phút
-
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "15m" }); // Short-lived access token
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: config.jwt.accessTokenExpiry });
 };
 
 const generateRefreshToken = () => {
@@ -115,14 +112,23 @@ exports.login = async (req, res, next) => {
     const { email, password } = req.body;
     const clientIP = req.ip || req.connection.remoteAddress;
     
-    // Check rate limiting
-    const attempts = loginAttempts.get(clientIP) || { count: 0, lastAttempt: 0 };
-    
-    if (attempts.count >= MAX_LOGIN_ATTEMPTS && Date.now() - attempts.lastAttempt < LOCK_TIME) {
-      const remainingTime = Math.ceil((LOCK_TIME - (Date.now() - attempts.lastAttempt)) / 60000);
+    // Check Redis-based rate limiting for IP
+    const ipRateLimit = await rateLimitService.checkLoginAttempts(clientIP, 'ip');
+    if (ipRateLimit.exceeded) {
       return res.status(429).json({ 
         success: false, 
-        message: `Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau ${remainingTime} phút` 
+        message: `Quá nhiều lần đăng nhập thất bại từ IP này. Vui lòng thử lại sau ${config.user.rateLimit.lockoutMinutes} phút`,
+        retryAfter: ipRateLimit.ttl
+      });
+    }
+    
+    // Check Redis-based rate limiting for email (prevents email enumeration attacks)
+    const emailRateLimit = await rateLimitService.checkLoginAttempts(email, 'email');
+    if (emailRateLimit.exceeded) {
+      return res.status(429).json({ 
+        success: false, 
+        message: `Quá nhiều lần đăng nhập thất bại cho email này. Vui lòng thử lại sau ${config.user.rateLimit.lockoutMinutes} phút`,
+        retryAfter: emailRateLimit.ttl
       });
     }
     
@@ -133,13 +139,15 @@ exports.login = async (req, res, next) => {
     const user = await User.findOne({ email }).select("+password");
     
     if (!user || !(await user.matchPassword(password))) {
-      // Increment failed attempts
-      loginAttempts.set(clientIP, {
-        count: attempts.count + 1,
-        lastAttempt: Date.now()
-      });
+      // Increment failed attempts in Redis for both IP and email
+      await rateLimitService.checkLoginAttempts(clientIP, 'ip'); // This will increment the counter
+      await rateLimitService.checkLoginAttempts(email, 'email'); // This will increment the counter
       
-      return res.status(401).json({ success: false, message: "Email hoặc mật khẩu không đúng" });
+      return res.status(401).json({ 
+        success: false, 
+        message: "Email hoặc mật khẩu không đúng",
+        remainingAttempts: Math.min(ipRateLimit.remaining, emailRateLimit.remaining)
+      });
     }
     
     // Check if user is banned
@@ -147,8 +155,9 @@ exports.login = async (req, res, next) => {
       return res.status(403).json({ success: false, message: "Tài khoản của bạn đã bị khóa" });
     }
     
-    // Reset attempts on successful login
-    loginAttempts.delete(clientIP);
+    // Reset rate limits on successful login
+    await rateLimitService.resetRateLimit(`login_attempts:ip:${clientIP}`);
+    await rateLimitService.resetRateLimit(`login_attempts:email:${email}`);
     
     // Generate tokens
     const accessToken = generateToken(user._id);

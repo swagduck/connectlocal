@@ -9,6 +9,7 @@ const Service = require('../models/Service');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const config = require('../config');
+const timezoneService = require('./timezoneService');
 
 class BookingService {
   constructor() {
@@ -36,9 +37,9 @@ class BookingService {
   }
 
   /**
-   * Validate booking data
+   * Validate booking data with timezone handling
    */
-  async validateBookingData(userId, serviceId, date) {
+  async validateBookingData(userId, serviceId, date, userTimezone = null) {
     const errors = [];
 
     // Validate service exists and is available
@@ -53,24 +54,24 @@ class BookingService {
       errors.push('Bạn không thể tự đặt dịch vụ của chính mình');
     }
 
-    // Validate booking date is in the future
-    const bookingDate = new Date(date);
-    const now = new Date();
-    if (bookingDate <= now) {
-      errors.push('Ngày đặt lịch phải là trong tương lai');
+    // Validate booking date with timezone awareness
+    const dateValidation = timezoneService.validateBookingDate(date, userTimezone);
+    if (!dateValidation.valid) {
+      errors.push(dateValidation.error);
+      return { valid: false, errors, service, dateValidation };
     }
 
-    // Validate booking is not too far in the future (optional)
-    const maxFutureDate = new Date();
-    maxFutureDate.setMonth(maxFutureDate.getMonth() + 6); // 6 months max
-    if (bookingDate > maxFutureDate) {
-      errors.push('Không thể đặt lịch quá 6 tháng tới');
-    }
+    const bookingDate = dateValidation.bookingDate;
 
-    // Check for double booking
-    const existingBooking = await Booking.findNotDeleted({
+    // Check for double booking (using UTC dates for database consistency)
+    const utcBookingDate = timezoneService.toDatabaseDate(date, userTimezone);
+    
+    const existingBookings = await Booking.findNotDeleted({
       provider: service.user,
-      date: bookingDate,
+      date: {
+        $gte: timezoneService.getTodayRange(userTimezone).start,
+        $lte: timezoneService.getTodayRange(userTimezone).end
+      },
       status: { $in: [
         config.booking.statuses.PENDING,
         config.booking.statuses.CONFIRMED,
@@ -78,19 +79,24 @@ class BookingService {
       ]}
     });
 
-    if (existingBooking.length > 0) {
+    // Check for time conflicts on the same day
+    const timeConflict = existingBookings.some(booking => {
+      const existingDate = timezoneService.fromDatabaseDate(booking.date, userTimezone);
+      return timezoneService.isSameDay(existingDate, bookingDate, userTimezone);
+    });
+
+    if (timeConflict) {
       errors.push('Thợ đã có lịch hẹn vào thời gian này. Vui lòng chọn thời gian khác.');
     }
 
     // Validate user's daily booking limit
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
+    const todayRange = timezoneService.getTodayRange(userTimezone);
     const todayBookings = await Booking.findNotDeleted({
       user: userId,
-      createdAt: { $gte: today, $lt: tomorrow }
+      createdAt: { 
+        $gte: todayRange.start, 
+        $lte: todayRange.end 
+      }
     });
 
     if (todayBookings.length >= config.booking.maxBookingsPerDay) {
@@ -100,7 +106,9 @@ class BookingService {
     return {
       valid: errors.length === 0,
       errors,
-      service
+      service,
+      dateValidation,
+      bookingDate: utcBookingDate // Store UTC date in database
     };
   }
 
@@ -124,24 +132,24 @@ class BookingService {
   }
 
   /**
-   * Create booking with transaction support
+   * Create booking with transaction support and timezone handling
    */
-  async createBooking(userId, bookingData) {
+  async createBooking(userId, bookingData, userTimezone = null) {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
       const { serviceId, date, note } = bookingData;
 
-      // Validate booking data
-      const validation = await this.validateBookingData(userId, serviceId, date);
+      // Validate booking data with timezone
+      const validation = await this.validateBookingData(userId, serviceId, date, userTimezone);
       if (!validation.valid) {
         await session.abortTransaction();
         session.endSession();
         throw new Error(validation.errors.join(', '));
       }
 
-      const { service } = validation;
+      const { service, dateValidation, bookingDate } = validation;
 
       // Calculate fees
       const fees = this.calculateFees(service.price);
@@ -160,17 +168,18 @@ class BookingService {
       user.walletBalance -= service.price;
       await user.save({ session });
 
-      // Create booking
+      // Create booking with UTC date
       const booking = await Booking.create([{
         user: userId,
         provider: service.user,
         service: serviceId,
-        date,
+        date: bookingDate, // Store UTC date
         note: note || '',
         price: service.price,
         platformFee: fees.platformFee,
         providerEarning: fees.providerEarning,
         status: config.booking.statuses.PENDING,
+        timezone: userTimezone || timezoneService.defaultTimezone, // Store user's timezone
       }], { session });
 
       const bookingDoc = booking[0];
@@ -190,6 +199,7 @@ class BookingService {
       session.endSession();
 
       console.log(`✅ Booking created successfully: ${bookingDoc._id}`);
+      console.log(`🕐 Booking time: ${timezoneService.formatDate(bookingDate, userTimezone)}`);
       console.log(`💰 Fees: Platform=${fees.platformFee}, Provider=${fees.providerEarning}`);
 
       return {
@@ -197,6 +207,7 @@ class BookingService {
         booking: bookingDoc,
         fees,
         customerBalance: user.walletBalance,
+        dateValidation
       };
 
     } catch (error) {
@@ -383,9 +394,9 @@ class BookingService {
   }
 
   /**
-   * Get user bookings with filtering and pagination
+   * Get user bookings with filtering and pagination (timezone-aware)
    */
-  async getUserBookings(userId, userRole, filters = {}, pagination = {}) {
+  async getUserBookings(userId, userRole, filters = {}, userTimezone = null) {
     const {
       status,
       startDate,
@@ -409,11 +420,13 @@ class BookingService {
       query.status = status;
     }
 
-    // Add date range filter
+    // Add date range filter with timezone handling
     if (startDate || endDate) {
-      query.date = {};
-      if (startDate) query.date.$gte = new Date(startDate);
-      if (endDate) query.date.$lte = new Date(endDate);
+      const dateRange = timezoneService.getDateRange(startDate, endDate, userTimezone);
+      query.date = {
+        $gte: dateRange.start,
+        $lte: dateRange.end
+      };
     }
 
     // Execute query with pagination
@@ -430,8 +443,16 @@ class BookingService {
       Booking.countDocuments(query)
     ]);
 
+    // Convert dates to user's timezone for display
+    const bookingsWithTimezone = bookings.map(booking => {
+      const bookingObj = booking.toObject();
+      bookingObj.localDate = timezoneService.fromDatabaseDate(booking.date, userTimezone);
+      bookingObj.formattedDate = timezoneService.formatDate(booking.date, userTimezone);
+      return bookingObj;
+    });
+
     return {
-      bookings,
+      bookings: bookingsWithTimezone,
       pagination: {
         page,
         limit,
@@ -442,24 +463,26 @@ class BookingService {
   }
 
   /**
-   * Get booking statistics
+   * Get booking statistics (timezone-aware)
    */
-  async getBookingStats(userId, userRole, period = 'month') {
+  async getBookingStats(userId, userRole, period = 'month', userTimezone = null) {
     const now = new Date();
     let startDate;
 
     switch (period) {
       case 'day':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        startDate = timezoneService.getTodayRange(userTimezone).start;
         break;
       case 'week':
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         break;
       case 'month':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        startDate = timezoneService.getTodayRange(userTimezone).start;
+        startDate.setDate(1);
         break;
       case 'year':
-        startDate = new Date(now.getFullYear(), 0, 1);
+        startDate = timezoneService.getTodayRange(userTimezone).start;
+        startDate.setMonth(0, 1);
         break;
       default:
         startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);

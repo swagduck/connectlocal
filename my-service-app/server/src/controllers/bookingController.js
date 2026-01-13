@@ -13,13 +13,14 @@ exports.createBooking = async (req, res, next) => {
     console.log('👤 Request user:', req.user);
     
     const { serviceId, date, note } = req.body;
+    const userTimezone = req.headers['x-timezone'] || req.user.timezone || 'Asia/Ho_Chi_Minh';
 
-    // Use service layer to create booking
+    // Use service layer to create booking with timezone
     const result = await bookingService.createBooking(req.user._id, {
       serviceId,
       date,
       note,
-    });
+    }, userTimezone);
 
     // Send notification to provider (after successful transaction)
     const sendToUser = req.app.get('sendToUser');
@@ -37,6 +38,7 @@ exports.createBooking = async (req, res, next) => {
         },
         date,
         note,
+        timezone: userTimezone,
         message: `🎉 ${customerInfo.name} vừa đặt dịch vụ!`,
         timestamp: new Date()
       });
@@ -51,6 +53,7 @@ exports.createBooking = async (req, res, next) => {
       data: result.booking,
       fees: result.fees,
       customerBalance: result.customerBalance,
+      dateValidation: result.dateValidation,
       message: `Đặt dịch vụ thành công! Đã trừ ${result.booking.price.toLocaleString('vi-VN')}đ từ ví của bạn.`,
     });
   } catch (error) {
@@ -63,16 +66,19 @@ exports.createBooking = async (req, res, next) => {
 exports.getBookings = async (req, res, next) => {
   try {
     const { page, limit, status, startDate, endDate, sort } = req.query;
+    const userTimezone = req.headers['x-timezone'] || req.user.timezone || 'Asia/Ho_Chi_Minh';
     
     const result = await bookingService.getUserBookings(
       req.user._id, 
       req.user.role, 
-      { page, limit, status, startDate, endDate, sort }
+      { page, limit, status, startDate, endDate, sort },
+      userTimezone
     );
 
     res.status(200).json({
       success: true,
       ...result,
+      timezone: userTimezone,
     });
   } catch (error) {
     next(error);
