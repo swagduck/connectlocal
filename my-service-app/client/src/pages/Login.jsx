@@ -12,7 +12,8 @@ const Login = () => {
         e.preventDefault();
         const success = await login(email, password);
         if (success) {
-            history.push('/'); // Chuyển về trang chủ sau khi login xong
+            // AuthContext sẽ tự reload trang sau khi login thành công
+            // Không cần history.push() vì sẽ reload
         }
     };
 
@@ -20,7 +21,7 @@ const Login = () => {
         <div className="min-h-screen flex items-center justify-center bg-gray-100">
             <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
                 <h2 className="text-3xl font-bold text-center text-blue-600 mb-6">Đăng Nhập</h2>
-                
+
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-gray-700 mb-2">Email</label>

@@ -193,7 +193,7 @@ const config = {
 
   // Cache Configuration
   cache: {
-    provider: process.env.CACHE_PROVIDER || 'redis',
+    provider: process.env.CACHE_PROVIDER || 'memory',
     ttl: {
       userProfiles: 30 * 60, // 30 minutes
       services: 60 * 60, // 1 hour

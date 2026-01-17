@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext } from 'react';
 import api from '../services/api';
 import { Users, ShoppingBag, Calendar, Trash2, Search, Shield, Eye, CheckCircle, XCircle, MessageSquare, AlertTriangle, TrendingUp, Clock, DollarSign, FileText, Settings, Ban, UserCheck, Star, CreditCard, ArrowUpRight, ArrowDownRight, PieChart, BarChart3, ImageIcon } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Link } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext';
 
 const AdminDashboard = () => {
+    const { user } = useContext(AuthContext);
     const [activeTab, setActiveTab] = useState('overview');
     const [stats, setStats] = useState(null);
     const [users, setUsers] = useState([]);
@@ -23,8 +25,10 @@ const AdminDashboard = () => {
     const placeholderImg = "https://placehold.co/150x150?text=No+Image";
 
     useEffect(() => {
-        fetchData();
-    }, []);
+        if (user?._id && user.role === 'admin') {
+            fetchData();
+        }
+    }, [user?._id]);
 
     useEffect(() => {
         if (activeTab === 'revenue') {
@@ -187,7 +191,7 @@ const AdminDashboard = () => {
         return <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${styles[status] || "bg-gray-100"}`}>{labels[status] || status}</span>;
     };
 
-    if (loading) return (
+    if (loading || !user?._id) return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
             <div className="text-center">
                 <div className="relative">

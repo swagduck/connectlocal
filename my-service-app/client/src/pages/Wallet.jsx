@@ -11,10 +11,12 @@ const Wallet = () => {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        fetchHistory();
-        // Refresh user data để cập nhật wallet balance
-        refreshUser();
-    }, []);
+        if (user?._id) {
+            fetchHistory();
+            // Refresh user data để cập nhật wallet balance
+            refreshUser();
+        }
+    }, [user?._id]);
 
     const fetchHistory = async () => {
         try {
@@ -71,6 +73,8 @@ const Wallet = () => {
             toast.error("Không thể hủy giao dịch");
         }
     };
+
+    if (!user?._id) return <div className="text-center mt-20">Đang tải...</div>;
 
     return (
         <div className="container mx-auto px-4 py-8">

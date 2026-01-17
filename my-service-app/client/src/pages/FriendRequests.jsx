@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { friendService } from '../services/friendService';
 import toast from 'react-hot-toast';
 import { useHistory } from 'react-router-dom';
 import { MessageCircle } from 'lucide-react';
+import { AuthContext } from '../context/AuthContext';
 
 const FriendRequests = () => {
+    const { user } = useContext(AuthContext);
     const [activeTab, setActiveTab] = useState('received'); // 'received' or 'sent'
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -13,16 +15,22 @@ const FriendRequests = () => {
     const history = useHistory();
 
     useEffect(() => {
-        fetchRequests();
-    }, [activeTab, currentPage]);
+        if (user?._id) {
+            fetchRequests();
+        }
+    }, [activeTab, currentPage, user?._id]);
 
     // Add refresh on component mount
     useEffect(() => {
-        fetchRequests();
-    }, []);
+        if (user?._id) {
+            fetchRequests();
+        }
+    }, [user?._id]);
 
     // Add refresh every 5 seconds to check for new requests
     useEffect(() => {
+        if (!user?._id) return;
+
         const interval = setInterval(() => {
             fetchRequests();
         }, 5000);

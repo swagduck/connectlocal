@@ -1,71 +1,71 @@
 /**
- * Redis-based Rate Limiting Service
- * Provides distributed rate limiting for authentication and API endpoints
+ * Memory-based Rate Limiting Service
+ * Provides rate limiting for authentication and API endpoints using memory storage
  */
 
-const Redis = require('ioredis');
 const config = require('../config');
 
 class RateLimitService {
   constructor() {
-    this.redis = null;
-    this.initializeRedis();
-  }
-
-  /**
-   * Initialize Redis connection
-   */
-  async initializeRedis() {
-    try {
-      this.redis = new Redis(config.redis.url, config.redis.options);
-      
-      this.redis.on('connect', () => {
-        console.log('✅ Rate limiting Redis connected');
-      });
-      
-      this.redis.on('error', (err) => {
-        console.error('❌ Rate limiting Redis error:', err);
-      });
-      
-      // Test connection
-      await this.redis.ping();
-    } catch (error) {
-      console.error('❌ Failed to connect to rate limiting Redis:', error.message);
-      this.redis = null;
-    }
+    this.memoryStore = new Map();
+    console.log('⚠️ Rate limiting using memory storage (Redis disabled)');
   }
 
   /**
    * Check if user/IP is rate limited
    */
   async isRateLimitExceeded(key, maxAttempts, windowMinutes) {
-    if (!this.redis) {
-      console.warn('⚠️ Redis not available, skipping rate limiting');
-      return { exceeded: false, remaining: maxAttempts };
-    }
-
     try {
-      const redisKey = `${config.redis.keyPrefix}rate_limit:${key}`;
-      const current = await this.redis.incr(redisKey);
-      
-      // Set expiration on first attempt
-      if (current === 1) {
-        await this.redis.expire(redisKey, windowMinutes * 60);
+      const now = Date.now();
+      const windowMs = windowMinutes * 60 * 1000;
+      const record = this.memoryStore.get(key);
+
+      if (!record) {
+        // First request
+        this.memoryStore.set(key, {
+          count: 1,
+          resetTime: now + windowMs
+        });
+        return { 
+          exceeded: false, 
+          remaining: maxAttempts - 1,
+          resetTime: now + windowMs
+        };
       }
 
-      const remaining = Math.max(0, maxAttempts - current);
-      const exceeded = current > maxAttempts;
+      // Check if window has expired
+      if (now > record.resetTime) {
+        // Reset window
+        this.memoryStore.set(key, {
+          count: 1,
+          resetTime: now + windowMs
+        });
+        return { 
+          exceeded: false, 
+          remaining: maxAttempts - 1,
+          resetTime: now + windowMs
+        };
+      }
 
-      return {
-        exceeded,
-        remaining,
-        current,
-        maxAttempts,
-        ttl: await this.redis.ttl(redisKey)
+      // Increment count
+      record.count++;
+      
+      if (record.count > maxAttempts) {
+        return { 
+          exceeded: true, 
+          remaining: 0,
+          resetTime: record.resetTime
+        };
+      }
+
+      return { 
+        exceeded: false, 
+        remaining: maxAttempts - record.count,
+        resetTime: record.resetTime
       };
     } catch (error) {
       console.error('Rate limiting check error:', error);
-      // Fail open - allow request if Redis fails
+      // Fail open - allow request if memory store fails
       return { exceeded: false, remaining: maxAttempts };
     }
   }
@@ -107,20 +107,14 @@ class RateLimitService {
    * Reset rate limit for a key
    */
   async resetRateLimit(key) {
-    if (!this.redis) {
-      console.warn('⚠️ Redis not available, cannot reset rate limit');
-      return false;
-    }
-
     try {
-      const redisKey = `${config.redis.keyPrefix}rate_limit:${key}`;
-      const result = await this.redis.del(redisKey);
+      const deleted = this.memoryStore.delete(key);
       
-      if (result > 0) {
+      if (deleted) {
         console.log(`🔄 Rate limit reset for key: ${key}`);
       }
       
-      return result > 0;
+      return deleted;
     } catch (error) {
       console.error('Rate limit reset error:', error);
       return false;
@@ -131,21 +125,23 @@ class RateLimitService {
    * Get current rate limit status
    */
   async getRateLimitStatus(key) {
-    if (!this.redis) {
-      return { status: 'unavailable' };
-    }
-
     try {
-      const redisKey = `${config.redis.keyPrefix}rate_limit:${key}`;
-      const [current, ttl] = await Promise.all([
-        this.redis.get(redisKey),
-        this.redis.ttl(redisKey)
-      ]);
+      const record = this.memoryStore.get(key);
+      
+      if (!record) {
+        return { status: 'not_found', current: 0 };
+      }
+
+      const now = Date.now();
+      if (now > record.resetTime) {
+        return { status: 'expired', current: 0 };
+      }
 
       return {
         status: 'active',
-        current: current ? parseInt(current) : 0,
-        ttl: ttl > 0 ? ttl : null
+        current: record.count,
+        resetTime: record.resetTime,
+        remainingTime: Math.max(0, record.resetTime - now)
       };
     } catch (error) {
       console.error('Rate limit status error:', error);
@@ -157,32 +153,18 @@ class RateLimitService {
    * Clean up expired rate limit keys (maintenance)
    */
   async cleanupExpiredKeys() {
-    if (!this.redis) {
-      return;
-    }
-
     try {
-      const pattern = `${config.redis.keyPrefix}rate_limit:*`;
-      const keys = await this.redis.keys(pattern);
-      
-      if (keys.length === 0) {
-        return;
-      }
-
-      // Check TTL for each key and remove expired ones
-      const pipeline = this.redis.pipeline();
+      const now = Date.now();
       let cleanedCount = 0;
 
-      for (const key of keys) {
-        const ttl = await this.redis.ttl(key);
-        if (ttl === -1) { // No expiration set, remove it
-          pipeline.del(key);
+      for (const [key, record] of this.memoryStore.entries()) {
+        if (now > record.resetTime) {
+          this.memoryStore.delete(key);
           cleanedCount++;
         }
       }
 
       if (cleanedCount > 0) {
-        await pipeline.exec();
         console.log(`🧹 Cleaned up ${cleanedCount} expired rate limit keys`);
       }
     } catch (error) {
@@ -194,16 +176,10 @@ class RateLimitService {
    * Get rate limiting statistics
    */
   async getStats() {
-    if (!this.redis) {
-      return { status: 'unavailable' };
-    }
-
     try {
-      const pattern = `${config.redis.keyPrefix}rate_limit:*`;
-      const keys = await this.redis.keys(pattern);
-      
+      const now = Date.now();
       const stats = {
-        totalKeys: keys.length,
+        totalKeys: this.memoryStore.size,
         activeKeys: 0,
         types: {
           login_attempts: 0,
@@ -213,9 +189,8 @@ class RateLimitService {
         }
       };
 
-      for (const key of keys) {
-        const ttl = await this.redis.ttl(key);
-        if (ttl > 0) {
+      for (const [key, record] of this.memoryStore.entries()) {
+        if (now <= record.resetTime) {
           stats.activeKeys++;
         }
 
@@ -244,19 +219,12 @@ class RateLimitService {
   async healthCheck() {
     const health = {
       status: 'healthy',
-      redis: false,
+      memory: true,
       stats: null
     };
 
     try {
-      if (this.redis) {
-        await this.redis.ping();
-        health.redis = true;
-        health.stats = await this.getStats();
-      } else {
-        health.status = 'degraded';
-        health.reason = 'Redis not available';
-      }
+      health.stats = await this.getStats();
     } catch (error) {
       health.status = 'unhealthy';
       health.error = error.message;
@@ -270,10 +238,8 @@ class RateLimitService {
    */
   async shutdown() {
     try {
-      if (this.redis) {
-        await this.redis.quit();
-        console.log('🔌 Rate limiting Redis connection closed');
-      }
+      this.memoryStore.clear();
+      console.log('🔌 Rate limiting memory store cleared');
     } catch (error) {
       console.error('Rate limiting shutdown error:', error);
     }

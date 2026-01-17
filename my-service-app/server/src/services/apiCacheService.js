@@ -1,9 +1,8 @@
 /**
  * API Cache Service
- * Provides intelligent caching and rate limiting for expensive external API calls
+ * Provides intelligent caching for expensive external API calls using memory storage
  */
 
-const Redis = require('ioredis');
 const config = require('../config');
 
 class APICacheService {
@@ -17,32 +16,7 @@ class APICacheService {
       deletes: 0,
     };
     
-    this.initializeRedis();
-  }
-
-  /**
-   * Initialize Redis connection
-   */
-  async initializeRedis() {
-    try {
-      this.redis = new Redis(config.redis.url, config.redis.options);
-      
-      this.redis.on('connect', () => {
-        console.log('✅ Redis cache connected');
-      });
-      
-      this.redis.on('error', (err) => {
-        console.error('❌ Redis cache error:', err);
-        console.log('⚠️ Falling back to memory cache');
-      });
-      
-      // Test connection
-      await this.redis.ping();
-    } catch (error) {
-      console.error('❌ Failed to connect to Redis:', error.message);
-      console.log('⚠️ Using memory cache only');
-      this.redis = null;
-    }
+    console.log('⚠️ API Cache using memory storage (Redis disabled)');
   }
 
   /**

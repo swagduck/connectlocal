@@ -1,16 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext } from 'react';
 import api from '../services/api';
 import { Star, CheckCircle, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useHistory } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext';
 
 const ManageRequests = () => {
+    const { user } = useContext(AuthContext);
     const [requests, setRequests] = useState([]);
     const history = useHistory();
 
     useEffect(() => {
-        fetchMyRequests();
-    }, []);
+        if (user?._id) {
+            fetchMyRequests();
+        }
+    }, [user?._id]);
 
     const fetchMyRequests = async () => {
         try {
@@ -24,7 +28,7 @@ const ManageRequests = () => {
     };
 
     const handleChooseProvider = async (requestId, providerId) => {
-        if(!window.confirm("Bạn chọn thợ này? Hệ thống sẽ tạo đơn hàng ngay lập tức.")) return;
+        if (!window.confirm("Bạn chọn thợ này? Hệ thống sẽ tạo đơn hàng ngay lập tức.")) return;
         try {
             await api.put(`/requests/${requestId}/choose`, { providerId });
             toast.success("Đã chọn thợ! Kiểm tra mục Đơn hàng.");
@@ -35,7 +39,7 @@ const ManageRequests = () => {
     };
 
     const handleDelete = async (id) => {
-        if(!window.confirm("Xóa yêu cầu này?")) return;
+        if (!window.confirm("Xóa yêu cầu này?")) return;
         try {
             await api.delete(`/requests/${id}`);
             setRequests(requests.filter(r => r._id !== id));
@@ -44,6 +48,8 @@ const ManageRequests = () => {
             toast.error("Lỗi xóa");
         }
     };
+
+    if (!user?._id) return <div className="text-center mt-20">Đang tải...</div>;
 
     return (
         <div className="container mx-auto px-4 py-8">
@@ -68,7 +74,7 @@ const ManageRequests = () => {
                             <h4 className="font-semibold text-gray-700 mb-3">
                                 Danh sách thợ ứng tuyển ({req.applicants?.length || 0})
                             </h4>
-                            
+
                             {req.applicants && req.applicants.length > 0 ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {req.applicants.map((app) => (
@@ -78,12 +84,12 @@ const ManageRequests = () => {
                                                 <div>
                                                     <p className="font-bold text-sm">{app.name}</p>
                                                     <div className="flex items-center text-xs text-yellow-500">
-                                                        <Star size={12} fill="currentColor" /> 
+                                                        <Star size={12} fill="currentColor" />
                                                         <span className="ml-1">{app.rating || 0} ({app.reviewCount || 0} đánh giá)</span>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <button 
+                                            <button
                                                 onClick={() => handleChooseProvider(req._id, app._id)}
                                                 className="bg-green-600 text-white px-3 py-1.5 rounded text-sm font-bold hover:bg-green-700 flex items-center"
                                             >

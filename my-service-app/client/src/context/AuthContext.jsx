@@ -7,6 +7,7 @@ export const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [forceUpdate, setForceUpdate] = useState(0);
 
     // Kiểm tra đăng nhập khi F5
     useEffect(() => {
@@ -41,8 +42,19 @@ export const AuthProvider = ({ children }) => {
             delete userData.token;
 
             localStorage.setItem('userInfo', JSON.stringify(userData));
-            setUser(userData);
-            toast.success('Đăng nhập thành công!');
+
+            // Force update bằng cách set user 2 lần
+            setUser(null);
+            setTimeout(() => {
+                setUser(userData);
+                toast.success('Đăng nhập thành công!');
+                // Force update thêm lần nữa để đảm bảo navbar re-render
+                setForceUpdate(prev => prev + 1);
+                // Force reload trang để đảm bảo navbar cập nhật 100%
+                setTimeout(() => {
+                    window.location.reload();
+                }, 100);
+            }, 10);
             return true;
         } catch (error) {
             toast.error(error.response?.data?.message || 'Đăng nhập thất bại');
@@ -110,7 +122,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, register, logout, loading, updateUser, refreshUser }}>
+        <AuthContext.Provider value={{ user, login, register, logout, loading, updateUser, refreshUser, forceUpdate }}>
             {children}
         </AuthContext.Provider>
     );

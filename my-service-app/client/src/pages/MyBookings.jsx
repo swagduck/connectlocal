@@ -13,13 +13,15 @@ const MyBookings = () => {
     const { user, refreshUser } = useContext(AuthContext);
 
     useEffect(() => {
-        fetchBookings();
-    }, []);
+        if (user?._id) {
+            fetchBookings();
+        }
+    }, [user?._id]);
 
     const fetchBookings = async () => {
         try {
             const res = await api.get('/bookings');
-            setBookings(res.data.data);
+            setBookings(res.data.bookings);
         } catch (error) {
             console.error(error);
             toast.error("Không tải được danh sách đơn");
@@ -87,7 +89,7 @@ const MyBookings = () => {
         }
     };
 
-    if (loading) return <div className="text-center mt-20">Đang tải danh sách đơn...</div>;
+    if (loading || !user?._id) return <div className="text-center mt-20">Đang tải danh sách đơn...</div>;
 
     return (
         <div className="container mx-auto px-4 py-8">
