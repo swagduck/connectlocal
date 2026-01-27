@@ -78,14 +78,9 @@ exports.getMyConversations = async (req, res, next) => {
 // @desc    Gửi tin nhắn
 // @route   POST /api/chat/messages
 exports.sendMessage = async (req, res, next) => {
-  console.log('🚀 ChatController.sendMessage called!');
-  console.log('📝 Request body:', req.body);
-  console.log('👤 Request user:', req.user);
-  
   const { conversationId, text, fileUrl, fileName, fileType } = req.body;
 
   if (!conversationId || !text) {
-    console.log('❌ Missing required data');
     return res.status(400).json({ message: "Thiếu dữ liệu gửi tin nhắn" });
   }
 
@@ -118,44 +113,36 @@ exports.sendMessage = async (req, res, next) => {
       latestMessage: message,
     });
 
-    // 👇 Gửi tin nhắn qua socket cho người nhận
+    // Gửi tin nhắn qua socket cho người nhận
     const sendToUser = req.app.get('sendToUser');
-    console.log('🔧 ChatController - sendToUser available:', !!sendToUser);
-    console.log('🔧 ChatController - Message conversation members:', message.conversation.members);
-    console.log('🔧 ChatController - Current user ID:', req.user.id);
     
     if (sendToUser) {
       // Tìm người nhận trong conversation
-      const receiverId = message.conversation.members.find(
+      const receiver = message.conversation.members.find(
         member => member._id.toString() !== req.user.id
       );
       
-      console.log('🔧 ChatController - Found receiver ID:', receiverId);
-      console.log('🔧 ChatController - Receiver ID type:', typeof receiverId);
-      console.log('🔧 ChatController - Receiver ID toString:', receiverId.toString());
-      
-      if (receiverId) {
+      if (receiver) {
         const messageData = {
-          _id: message._id,
-          conversation: message.conversation._id,
-          sender: message.sender,
-          message: message.text,
-          createdAt: message.createdAt,
+          messageId: message._id,
+          conversationId: message.conversation._id,
+          text: message.text,
+          sender: message.sender._id,
           senderName: message.sender.name
         };
         
-        console.log('🔧 ChatController - Sending message data:', messageData);
-        
         // Convert ObjectId to string for comparison
-        const receiverIdString = receiverId._id ? receiverId._id.toString() : receiverId.toString();
+        const receiverIdString = receiver._id ? receiver._id.toString() : receiver.toString();
         const success = sendToUser(receiverIdString, 'get_message', messageData);
         
-        console.log('📨 ChatController - Message sent via HTTP API to:', receiverIdString, 'Success:', success);
+        if (!success) {
+          console.log('Failed to send message via socket to:', receiverIdString);
+        }
       } else {
-        console.log('❌ ChatController - No receiver found in conversation');
+        console.log('No receiver found in conversation');
       }
     } else {
-      console.log('❌ ChatController - sendToUser function not available');
+      console.log('sendToUser function not available');
     }
 
     res.json(message);

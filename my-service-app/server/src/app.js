@@ -30,7 +30,7 @@ const app = express();
 
 // CORS configuration - MUST be first to handle preflight requests
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -47,7 +47,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https:", "http://localhost:5173"],
+      connectSrc: ["'self'", "https:", "http://localhost:3000"],
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
@@ -111,14 +111,6 @@ app.use("/api/payment", paymentRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/ai", aiRoutes);
 
-// Add logging middleware for debugging
-app.use("/api/chat/messages", (req, res, next) => {
-  console.log('🔍 DEBUG: /api/chat/messages route hit!');
-  console.log('🔍 DEBUG: Method:', req.method);
-  console.log('🔍 DEBUG: Body:', req.body);
-  console.log('🔍 DEBUG: User:', req.user);
-  next();
-});
 
 // Error Handling
 app.use(notFound);

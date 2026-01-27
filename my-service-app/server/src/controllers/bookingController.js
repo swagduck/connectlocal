@@ -8,10 +8,6 @@ const config = require("../config");
 // @desc    Tạo đơn đặt lịch mới
 exports.createBooking = async (req, res, next) => {
   try {
-    console.log('🚀 BookingController.createBooking called');
-    console.log('📝 Request body:', req.body);
-    console.log('👤 Request user:', req.user);
-    
     const { serviceId, date, note } = req.body;
     const userTimezone = req.headers['x-timezone'] || req.user.timezone || 'Asia/Ho_Chi_Minh';
 
@@ -43,8 +39,8 @@ exports.createBooking = async (req, res, next) => {
         timestamp: new Date()
       });
       
-      if (success) {
-        console.log('🎉 Booking notification sent to provider:', result.booking.provider);
+      if (!success) {
+        console.log('Failed to send booking notification to provider:', result.booking.provider);
       }
     }
 
@@ -141,8 +137,8 @@ exports.updateBookingStatus = async (req, res, next) => {
           timestamp: new Date()
         });
         
-        if (success) {
-          console.log('📨 Booking status notification sent to customer:', result.booking.user._id);
+        if (!success) {
+          console.log('Failed to send booking status notification to customer:', result.booking.user._id);
         }
       }
     }
@@ -167,8 +163,8 @@ exports.deleteBooking = async (req, res, next) => {
       reason
     );
 
-    console.log(`🗑️ Booking ${req.params.id} đã được soft delete bởi ${req.user.name || req.user.id}`);
-    console.log(`📝 Lý do: ${reason}`);
+    console.log(`Booking ${req.params.id} soft deleted by ${req.user.name || req.user.id}`);
+    console.log(`Reason: ${reason}`);
 
     res.status(200).json({ 
       success: true, 
@@ -193,7 +189,7 @@ exports.restoreBooking = async (req, res, next) => {
 
     const result = await bookingService.restoreBooking(req.params.id, req.user._id);
 
-    console.log(`♻️ Booking ${req.params.id} đã được restore bởi admin ${req.user.name || req.user.id}`);
+    console.log(`Booking ${req.params.id} restored by admin ${req.user.name || req.user.id}`);
 
     res.status(200).json({ 
       success: true, 
@@ -259,7 +255,7 @@ exports.hardDeleteBooking = async (req, res, next) => {
     // Hard delete
     await booking.deleteOne();
 
-    console.log(`🔥 Booking ${booking._id} đã được HARD DELETE vĩnh viễn bởi admin ${req.user.name || req.user.id}`);
+    console.log(`Booking ${booking._id} permanently deleted by admin ${req.user.name || req.user.id}`);
 
     res.status(200).json({ 
       success: true, 

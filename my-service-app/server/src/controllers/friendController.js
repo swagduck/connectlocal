@@ -12,11 +12,8 @@ const setSocketIO = (socketIO) => {
 // Gửi lời mời kết bạn
 const sendFriendRequest = async (req, res) => {
   try {
-    console.log('🚀 Starting sendFriendRequest...');
     const { recipientId } = req.body;
     const requesterId = req.user.id;
-
-    console.log('📝 Request data:', { recipientId, requesterId });
 
     // Validate recipientId
     if (!recipientId) {
@@ -50,8 +47,6 @@ const sendFriendRequest = async (req, res) => {
         message: "Không tìm thấy người dùng",
       });
     }
-
-    console.log('✅ Recipient found:', recipient.name);
 
     // Kiểm tra đã có mối quan hệ nào chưa
     const existingFriendship = await Friend.findOne({
@@ -91,20 +86,8 @@ const sendFriendRequest = async (req, res) => {
       { path: "recipient", select: "name email avatar" },
     ]);
 
-    console.log('👤 Friend request populated:', {
-      requester: friendRequest.requester.name,
-      recipient: friendRequest.recipient.name
-    });
-
     // Emit socket event for real-time notification
     const sendToUser = req.app.get('sendToUser');
-    console.log('🔧 sendToUser function available:', !!sendToUser);
-    console.log('🔧 Recipient ID:', recipientId);
-    console.log('🔧 Friend request data:', {
-      requestId: friendRequest._id,
-      recipientId: recipientId,
-      requester: friendRequest.requester
-    });
     
     if (sendToUser) {
       const success = sendToUser(recipientId, 'friend_request_sent', {
@@ -113,17 +96,10 @@ const sendFriendRequest = async (req, res) => {
         requester: friendRequest.requester
       });
       
-      console.log('📤 Friend request notification result:', success);
-      if (success) {
-        console.log('👋 Friend request notification sent to:', recipientId);
-      } else {
-        console.log('❌ Failed to send friend request notification to:', recipientId);
+      if (!success) {
+        console.log('Failed to send friend request notification to:', recipientId);
       }
-    } else {
-      console.log('❌ sendToUser function not available');
     }
-
-    console.log('✅ Friend request completed successfully');
     res.status(201).json({
       success: true,
       message: "Gửi lời mời kết bạn thành công",
@@ -134,7 +110,6 @@ const sendFriendRequest = async (req, res) => {
     
     // Handle MongoDB duplicate key error
     if (error.code === 11000) {
-      console.log("🔍 Duplicate key error:", error.keyPattern);
       return res.status(400).json({
         success: false,
         message: "Đã tồn tại lời mời kết bạn hoặc mối quan hệ giữa hai người dùng này",
@@ -207,7 +182,7 @@ const acceptFriendRequest = async (req, res) => {
       });
       
       if (success) {
-        console.log('✅ Friend request accepted notification sent to:', friendRequest.requester._id);
+        console.log('Friend request accepted notification sent to:', friendRequest.requester._id);
       }
     }
 
@@ -346,8 +321,6 @@ const getPendingRequests = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    console.log('🔍 Getting pending requests for user:', userId);
-
     const pendingRequests = await Friend.find({
       recipient: userId,
       status: "pending",
@@ -357,15 +330,10 @@ const getPendingRequests = async (req, res) => {
       .skip(skip)
       .limit(limit);
 
-    console.log('📋 Found pending requests:', pendingRequests.length);
-    console.log('📋 Pending requests data:', pendingRequests);
-
     const totalRequests = await Friend.countDocuments({
       recipient: userId,
       status: "pending",
     });
-
-    console.log('📊 Total pending requests:', totalRequests);
 
     res.json({
       success: true,

@@ -36,25 +36,23 @@ export const AuthProvider = ({ children }) => {
         try {
             const res = await api.post('/auth/login', { email, password });
             localStorage.setItem('token', res.data.token);
-            // Chuẩn hóa dữ liệu user để lưu (bỏ token thừa)
-            const userData = { ...res.data };
-            delete userData.success;
-            delete userData.token;
+
+            // Get fresh user data from server to ensure all fields are present
+            const userRes = await api.get('/auth/me');
+            const userData = userRes.data.data;
 
             localStorage.setItem('userInfo', JSON.stringify(userData));
 
-            // Force update bằng cách set user 2 lần
-            setUser(null);
+            setUser(userData);
+            toast.success('Đăng nhập thành công!');
+
+            // Force update to trigger navbar re-render
+            setForceUpdate(prev => prev + 1);
+
+            // Redirect to home page using window.location for reliable navigation
             setTimeout(() => {
-                setUser(userData);
-                toast.success('Đăng nhập thành công!');
-                // Force update thêm lần nữa để đảm bảo navbar re-render
-                setForceUpdate(prev => prev + 1);
-                // Force reload trang để đảm bảo navbar cập nhật 100%
-                setTimeout(() => {
-                    window.location.reload();
-                }, 100);
-            }, 10);
+                window.location.href = '/';
+            }, 200);
             return true;
         } catch (error) {
             toast.error(error.response?.data?.message || 'Đăng nhập thất bại');

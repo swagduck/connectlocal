@@ -12,8 +12,7 @@ const Login = () => {
         e.preventDefault();
         const success = await login(email, password);
         if (success) {
-            // AuthContext sẽ tự reload trang sau khi login thành công
-            // Không cần history.push() vì sẽ reload
+            // Redirect handled in AuthContext
         }
     };
 

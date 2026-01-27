@@ -16,14 +16,9 @@ export const SocketProvider = ({ children }) => {
     const [notifications, setNotifications] = useState([]);
     const [friendRequestCount, setFriendRequestCount] = useState(0);
 
-    console.log('🔧 SocketProvider - User:', user);
-    console.log('🔧 SocketProvider - Notifications:', notifications);
-
     useEffect(() => {
-        console.log('🔄 SocketContext useEffect triggered, user:', !!user);
         if (user) {
             const socketUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || "http://localhost:5001";
-            console.log('🔌 Connecting to socket at:', socketUrl);
 
             const newSocket = io(socketUrl, {
                 transports: ['websocket', 'polling'],
@@ -32,8 +27,6 @@ export const SocketProvider = ({ children }) => {
             });
 
             newSocket.on('connect', () => {
-                console.log('✅ Socket connected successfully');
-                console.log('👤 User ID for socket:', user._id);
                 newSocket.emit("add_user", user._id);
             });
 
@@ -42,48 +35,33 @@ export const SocketProvider = ({ children }) => {
             });
 
             newSocket.on('disconnect', (reason) => {
-                console.log('🔌 Socket disconnected:', reason);
+                // Handle disconnect
             });
 
             // Test connection with a simple event
             newSocket.on('test_connection', (data) => {
-                console.log('🧪 Test connection received:', data);
+                // Test connection received
             });
 
             setSocket(newSocket);
 
             newSocket.on("get_users", (users) => {
-                console.log('👥 Online users updated:', users.length, 'users');
                 setOnlineUsers(users);
             });
 
-            // Thêm log để kiểm tra tất cả các events
-            newSocket.onAny((eventName, ...args) => {
-                if (eventName !== 'get_users') { // Reduce noise
-                    console.log('📡 Socket event received:', eventName, args);
-                }
-            });
-
-            // 👇 LẮNG NGHE TIN NHẮN ĐẾN TOÀN CỤC (GLOBAL LISTENER)
+            //  LẮNG NGHE TIN NHẮN ĐẾN TOÀN CỤC (GLOBAL LISTENER)
             newSocket.on("get_message", (res) => {
-                console.log('📨 Received message:', res);
-                console.log('📨 Message sender:', res.sender);
-                console.log('📨 Message sender ID:', res.sender?._id || res.sender);
-                console.log('📨 Current user ID:', user._id);
-                console.log('📨 Message data structure:', JSON.stringify(res, null, 2));
 
                 // Chỉ xử lý nếu tin nhắn không phải từ chính mình
                 const senderId = res.sender?._id || res.sender;
                 if (senderId && senderId !== user._id) {
-                    console.log('🔔 Processing message notification...');
 
                     // 1. Phát âm thanh "Ting"
                     const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
-                    audio.play().catch(e => console.log("Chưa tương tác trang web nên không phát nhạc được"));
+                    audio.play().catch(e => console.log("Audio play failed - user interaction required"));
 
                     // 2. Hiển thị toast notification
                     const senderName = res.senderName || res.sender?.name || 'Người dùng';
-                    console.log('🔔 Showing message toast from:', senderName);
                     toast.success(`Tin nhắn mới từ ${senderName}: ${res.message}`, {
                         icon: '💬',
                         duration: 5000,
@@ -95,7 +73,6 @@ export const SocketProvider = ({ children }) => {
 
                     // 3. Thêm vào danh sách thông báo với type 'message' và unique ID
                     setNotifications((prev) => {
-                        console.log('📝 Previous notifications:', prev.length);
                         const newNotifications = [{
                             _id: res._id || `message-${Date.now()}`, // Unique ID
                             type: 'message',
@@ -105,14 +82,8 @@ export const SocketProvider = ({ children }) => {
                             timestamp: new Date(res.createdAt),
                             ...res
                         }, ...prev];
-                        console.log('📝 New notifications count:', newNotifications.length);
                         return newNotifications;
                     });
-
-                    console.log('✅ Message notification processed successfully');
-                } else {
-                    console.log('🚫 Ignoring message from self or invalid sender');
-                    console.log('🚫 Comparison:', senderId, 'vs', user._id);
                 }
             });
 
@@ -130,26 +101,20 @@ export const SocketProvider = ({ children }) => {
                 }
             });
 
-            // 👇 LẮNG NGHE FRIEND REQUEST NOTIFICATIONS
+            // LẮNG NGHE FRIEND REQUEST NOTIFICATIONS
             newSocket.on("friend_request_sent", (data) => {
-                console.log('📋 Friend request notification received:', data);
-                console.log('📋 Current notifications count:', notifications.length);
-
                 // Safety check
                 if (!data || !data.requester) {
-                    console.log('❌ Invalid friend request data:', data);
+                    console.log('Invalid friend request data:', data);
                     return;
                 }
 
-                console.log('✅ Friend request data valid, processing...');
-
                 // Phát âm thanh thông báo
                 const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
-                audio.play().catch(e => console.log("Chưa tương tác trang web nên không phát nhạc được"));
+                audio.play().catch(e => console.log("Audio play failed - user interaction required"));
 
                 // Hiển thị toast notification
                 const requesterName = data.requester.name || 'Người dùng';
-                console.log('🔔 Showing toast for:', requesterName);
                 toast.success(`${requesterName} muốn kết bạn với bạn!`, {
                     icon: '👋',
                     duration: 5000,
@@ -160,26 +125,20 @@ export const SocketProvider = ({ children }) => {
                 });
 
                 // Thêm vào danh sách thông báo
-                console.log('📝 Adding to notifications list...');
                 setNotifications((prev) => {
-                    console.log('📝 Previous notifications:', prev.length);
                     const newNotifications = [{
                         type: 'friend_request',
                         ...data,
                         timestamp: new Date()
                     }, ...prev];
-                    console.log('📝 New notifications count:', newNotifications.length);
                     return newNotifications;
                 });
 
                 // Tăng số lượng friend request
-                setFriendRequestCount(prev => {
-                    console.log('🔢 Friend request count:', prev, '->', prev + 1);
-                    return prev + 1;
-                });
+                setFriendRequestCount(prev => prev + 1);
             });
 
-            // 👇 LẮNG NGHE BOOKING NOTIFICATIONS
+            // LẮNG NGHE BOOKING NOTIFICATIONS
             newSocket.on("new_booking_notification", (data) => {
                 // Safety check
                 if (!data || !data.customer || !data.service) {
@@ -189,7 +148,7 @@ export const SocketProvider = ({ children }) => {
 
                 // Phát âm thanh thông báo
                 const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
-                audio.play().catch(e => console.log("Chưa tương tác trang web nên không phát nhạc được"));
+                audio.play().catch(e => console.log("Audio play failed - user interaction required"));
 
                 // Hiển thị toast notification
                 toast.success(data.message, {
@@ -218,7 +177,7 @@ export const SocketProvider = ({ children }) => {
 
                 // Phát âm thanh thông báo
                 const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
-                audio.play().catch(e => console.log("Chưa tương tác trang web nên không phát nhạc được"));
+                audio.play().catch(e => console.log("Audio play failed - user interaction required"));
 
                 // Hiển thị toast notification
                 toast.success(data.message, {
@@ -240,8 +199,6 @@ export const SocketProvider = ({ children }) => {
             });
 
             newSocket.on("friend_request_accepted", (data) => {
-                console.log('✅ Friend request accepted notification received:', data);
-
                 // Safety check
                 if (!data || !data.newFriend) {
                     console.log('Invalid friend accepted data:', data);
@@ -250,7 +207,7 @@ export const SocketProvider = ({ children }) => {
 
                 // Phát âm thanh thông báo
                 const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
-                audio.play().catch(e => console.log("Chưa tương tác trang web nên không phát nhạc được"));
+                audio.play().catch(e => console.log("Audio play failed - user interaction required"));
 
                 // Hiển thị toast notification
                 const friendName = data.newFriend.name || 'Người dùng';
@@ -271,14 +228,12 @@ export const SocketProvider = ({ children }) => {
                 }, ...prev]);
             });
 
-            // 👇 LẮNG NGHE NOTIFICATION REMOVAL EVENTS
+            // LẮNG NGHE NOTIFICATION REMOVAL EVENTS
             newSocket.on("notification_removed", (data) => {
-                console.log('🗑️ Notification removal event received:', data);
                 const { notificationId } = data;
 
                 setNotifications((prev) => {
                     const newNotifications = prev.filter((n) => n._id !== notificationId);
-                    console.log('🗑️ Notifications after removal:', newNotifications.length);
                     return newNotifications;
                 });
             });
@@ -292,14 +247,13 @@ export const SocketProvider = ({ children }) => {
         }
     }, [user]);
 
-    // 👇 Fetch initial friend request count
+    // Fetch initial friend request count
     useEffect(() => {
         if (user) {
             const fetchFriendRequestCount = async () => {
                 try {
                     const token = localStorage.getItem('token');
                     if (!token) {
-                        console.log('No token found, skipping friend request count fetch');
                         return;
                     }
 
@@ -307,12 +261,11 @@ export const SocketProvider = ({ children }) => {
                         headers: { Authorization: `Bearer ${token}` }
                     });
                     setFriendRequestCount(response.data.count || 0);
-                    console.log('Friend request count fetched:', response.data.count);
                 } catch (error) {
                     console.error('Error fetching friend request count:', error);
                     // Don't set error state, just log it
                     if (error.response?.status === 401) {
-                        console.log('Unauthorized - token may be expired');
+                        // Token may be expired
                     }
                 }
             };
@@ -323,12 +276,9 @@ export const SocketProvider = ({ children }) => {
 
     // 👇 Hàm hỗ trợ xóa thông báo khi đã đọc
     const markAsRead = (notificationId) => {
-        console.log('🗑️ Marking notification as read:', notificationId);
-
         // Remove from local state immediately for instant feedback
         setNotifications((prev) => {
             const newNotifications = prev.filter((n) => n._id !== notificationId);
-            console.log('🗑️ Notifications after removal:', newNotifications.length);
             return newNotifications;
         });
 
@@ -338,7 +288,6 @@ export const SocketProvider = ({ children }) => {
                 notificationId,
                 userId: user._id
             });
-            console.log('📤 Emitted notification removal event:', { notificationId, userId: user._id });
         }
     };
 
@@ -348,10 +297,6 @@ export const SocketProvider = ({ children }) => {
     };
 
     const getNotificationCount = (type) => {
-        console.log('🔢 Getting notification count for type:', type);
-        console.log('🔢 Current notifications:', notifications);
-        console.log('🔢 Friend request count:', friendRequestCount);
-
         let count = 0;
         if (type === 'friend_request') {
             count = friendRequestCount;
@@ -373,7 +318,6 @@ export const SocketProvider = ({ children }) => {
             count = notifications.filter(n => n.type === type).length;
         }
 
-        console.log('🔢 Final count for', type, ':', count);
         return count;
     };
 
@@ -398,7 +342,6 @@ export const SocketProvider = ({ children }) => {
 
     // 👇 Hàm test để gửi thông báo thủ công
     const testNotification = () => {
-        console.log('🧪 Testing notification manually...');
         setNotifications((prev) => [{
             type: 'message',
             senderId: 'test-user',

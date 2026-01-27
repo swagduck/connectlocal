@@ -38,11 +38,8 @@ const ChatNew = () => {
         if (!socket) return;
 
         socket.on("get_message", (data) => {
-            console.log('📨 ChatNew - Received message:', data);
-
             // Check if message belongs to current chat
             if (currentChat && data.conversation === currentChat._id) {
-                console.log('📨 ChatNew - Message belongs to current chat, adding to messages');
 
                 setMessages(prev => {
                     const newMessages = [...prev, {
@@ -64,8 +61,6 @@ const ChatNew = () => {
                 if (data.sender._id !== user._id) {
                     markAsRead(data.sender._id);
                 }
-            } else {
-                console.log('📨 ChatNew - Message not for current chat, ignoring');
             }
         });
     }, [socket, currentChat, user]);
@@ -143,10 +138,6 @@ const ChatNew = () => {
         if (!newMessage.trim()) return;
 
         const receiverId = currentChat.members.find(member => member._id !== user._id)._id;
-        console.log('📤 Sending message to:', receiverId);
-        console.log('📤 Message content:', newMessage);
-        console.log('📤 Current chat ID:', currentChat._id);
-        console.log('📤 Current user ID:', user._id);
 
         // Optimistic update
         const tempId = Date.now();
@@ -159,14 +150,11 @@ const ChatNew = () => {
         }]);
 
         try {
-            console.log('📤 Making API call to /chat/messages...');
             const res = await api.post("/chat/messages", {
                 conversationId: currentChat._id,
                 sender: user._id,
                 text: newMessage
             });
-
-            console.log('✅ API call successful:', res.data);
 
             // Replace temp message with real one
             setMessages(prev => prev.map(msg =>

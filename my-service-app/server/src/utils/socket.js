@@ -12,21 +12,15 @@ const socketHandler = (io) => {
     const userSocket = onlineUsers.find(user => user.userId === userId);
     if (userSocket) {
       io.to(userSocket.socketId).emit(event, data);
-      console.log(`📤 Sent ${event} to user:`, userId);
       return true;
     } else {
-      console.log(`📴 User ${userId} not online for ${event}`);
       return false;
     }
   };
 
   io.on('connection', (socket) => {
-    console.log('🔗 User connected:', socket.id);
-
     // Add user to online users
     socket.on('add_user', (userId) => {
-      console.log('👤 Adding user to online list:', userId);
-      console.log('👤 Current online users before:', onlineUsers.map(u => u.userId));
       
       // Remove existing user if already exists (handle reconnect)
       onlineUsers = onlineUsers.filter(user => user.userId !== userId);
@@ -37,15 +31,8 @@ const socketHandler = (io) => {
         lastSeen: new Date()
       });
       
-      console.log('✅ User added to online list. Total users:', onlineUsers.length);
-      console.log('👤 Current online users after:', onlineUsers.map(u => u.userId));
-      
-      // Send test event to verify connection
-      socket.emit('test_connection', { message: 'Connection test successful!', userId });
-      
       // Broadcast updated online users list
       io.emit('get_users', onlineUsers);
-      console.log('👥 Online users updated:', onlineUsers.length);
     });
 
     // Worker accepts job
@@ -84,8 +71,6 @@ const socketHandler = (io) => {
         // Broadcast to all workers that this job is taken
         io.emit('job_taken', { jobId, workerId });
 
-        console.log('✅ Job accepted:', jobId, 'by worker:', workerId);
-
       } catch (error) {
         console.error('❌ Error accepting job:', error);
         socket.emit('error', { message: 'Không thể nhận công việc' });
@@ -114,8 +99,6 @@ const socketHandler = (io) => {
             timestamp: new Date()
           });
         }
-
-        console.log('📍 Worker location updated:', workerId, 'at', location);
 
       } catch (error) {
         console.error('❌ Error updating worker location:', error);
@@ -151,8 +134,6 @@ const socketHandler = (io) => {
           });
         }
 
-        console.log('🚗 Job started:', jobId, 'by worker:', workerId);
-
       } catch (error) {
         console.error('❌ Error starting job:', error);
         socket.emit('error', { message: 'Không thể bắt đầu công việc' });
@@ -184,8 +165,6 @@ const socketHandler = (io) => {
             completedAt: new Date()
           });
         }
-
-        console.log('✅ Job completed:', jobId, 'by worker:', workerId);
 
       } catch (error) {
         console.error('❌ Error completing job:', error);
@@ -276,8 +255,6 @@ const socketHandler = (io) => {
 
         // Send to receiver
         const receiverSocket = onlineUsers.find(user => user.userId === receiverId);
-        console.log('🔍 Looking for receiver socket:', receiverId);
-        console.log('👥 Online users:', onlineUsers.map(u => ({ userId: u.userId, socketId: u.socketId })));
         
         if (receiverSocket) {
           const messageData = {
@@ -288,13 +265,7 @@ const socketHandler = (io) => {
             createdAt: newMessage.createdAt
           };
           
-          console.log('📨 Sending message to receiver:', receiverId, messageData);
-          console.log('📨 Receiver socket ID:', receiverSocket.socketId);
-          
           io.to(receiverSocket.socketId).emit('get_message', messageData);
-          console.log('✅ Message emitted successfully');
-        } else {
-          console.log('📴 Receiver not online:', receiverId);
         }
 
         // Send confirmation to sender
@@ -302,8 +273,6 @@ const socketHandler = (io) => {
           tempId: data.tempId,
           messageId: newMessage._id
         });
-
-        console.log('💬 Message sent from', senderId, 'to', receiverId);
 
       } catch (error) {
         console.error('❌ Error sending message:', error);
@@ -321,8 +290,6 @@ const socketHandler = (io) => {
           { read: true }
         );
 
-        console.log('📖 Messages marked as read for conversation:', conversationId);
-
       } catch (error) {
         console.error('❌ Error marking messages as read:', error);
       }
@@ -332,7 +299,6 @@ const socketHandler = (io) => {
     socket.on('remove_notification', (data) => {
       try {
         const { notificationId, userId } = data;
-        console.log('🗑️ User removing notification:', { notificationId, userId });
         
         // Broadcast to all user's connected devices that a notification was removed
         const userSockets = onlineUsers.filter(user => user.userId === userId);
@@ -343,8 +309,7 @@ const socketHandler = (io) => {
             timestamp: new Date()
           });
         });
-        
-        console.log('✅ Notification removal broadcasted to user devices:', userId);
+
       } catch (error) {
         console.error('❌ Error removing notification:', error);
         socket.emit('error', { message: 'Không thể xóa thông báo' });
@@ -353,8 +318,6 @@ const socketHandler = (io) => {
 
     // Handle user disconnect
     socket.on('disconnect', () => {
-      console.log('🔌 User disconnected:', socket.id);
-      
       // Remove user from online users
       onlineUsers = onlineUsers.filter(user => user.socketId !== socket.id);
       
@@ -378,7 +341,6 @@ const socketHandler = (io) => {
       
       // Broadcast updated online users list
       io.emit('get_users', onlineUsers);
-      console.log('👥 Online users after disconnect:', onlineUsers.length);
     });
   });
 

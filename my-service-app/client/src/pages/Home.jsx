@@ -1,13 +1,15 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useContext } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../services/api';
 import ServiceCard from '../components/ServiceCard';
+import { AuthContext } from '../context/AuthContext';
 import { toast } from 'react-hot-toast';
 import { Search, Filter, Wrench, Zap, Truck, Home as HomeIcon, BookOpen, Smile, Star, ArrowRight, ShieldCheck, Clock, UserCheck, MapPin } from 'lucide-react';
 
 const Home = () => {
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
+    const { user } = useContext(AuthContext);
 
     // Ref to track if component is mounted
     const isMounted = useRef(true);
@@ -95,7 +97,7 @@ const Home = () => {
         return () => {
             isMounted.current = false;
         };
-    }, [category, radius, useLocation]);
+    }, [category, radius, useLocation, user?._id]);
 
     const handleSearch = (e) => {
         e.preventDefault();
