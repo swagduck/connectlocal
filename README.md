@@ -159,11 +159,7 @@ my-service-app/
 4. Push to branch (`git push origin feature/AmazingFeature`)
 5. Open Pull Request
 
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 👥 Team
+##  Team
 
 - **Developer**: [Your Name]
 - **Project**: ConnectLocal - Final Year Project
