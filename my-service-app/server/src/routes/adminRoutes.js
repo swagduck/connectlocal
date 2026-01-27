@@ -12,6 +12,7 @@ const {
   banUser,
   unbanUser,
   adminUpdateBooking,
+  adminDeleteBooking,
   getAllTransactions,
   updateTransactionStatus,
   deleteRequest,
@@ -39,6 +40,7 @@ router.get("/services", getAllServices);
 // Route quản lý bookings
 router.get("/bookings", getAllBookings);
 router.put("/bookings/:id", adminUpdateBooking);
+router.delete("/bookings/:id", adminDeleteBooking);
 
 // Route quản lý requests
 router.get("/requests", getAllRequests);

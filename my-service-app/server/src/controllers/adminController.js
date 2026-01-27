@@ -114,7 +114,8 @@ exports.getAllServices = async (req, res, next) => {
 // @route   GET /api/admin/bookings
 exports.getAllBookings = async (req, res, next) => {
   try {
-    const bookings = await Booking.find()
+    const bookings = await Booking.findWithDeleted()
+      .select('+isDeleted +deletedAt +deletedBy')
       .populate("user", "name email phone") // Khách
       .populate("provider", "name email phone") // Thợ
       .populate("service", "title") // Dịch vụ
@@ -240,7 +241,8 @@ exports.unbanUser = async (req, res, next) => {
 exports.adminUpdateBooking = async (req, res, next) => {
   try {
     const { status } = req.body;
-    let booking = await Booking.findById(req.params.id)
+    let booking = await Booking.findWithDeleted({ _id: req.params.id })
+      .select('+isDeleted +deletedAt +deletedBy')
       .populate("service")
       .populate("user")
       .populate("provider");
@@ -249,6 +251,14 @@ exports.adminUpdateBooking = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: "Không tìm thấy đơn hàng"
+      });
+    }
+
+    // Kiểm tra xem booking đã bị xóa chưa
+    if (booking.isDeleted) {
+      return res.status(400).json({
+        success: false,
+        message: "Không thể cập nhật đơn hàng đã bị xóa"
       });
     }
 
@@ -288,6 +298,60 @@ exports.adminUpdateBooking = async (req, res, next) => {
       data: booking,
     });
   } catch (error) {
+    console.error('❌ Admin update booking error:', {
+      bookingId: req.params.id,
+      status: req.body.status,
+      error: error.message,
+      stack: error.stack
+    });
+    next(error);
+  }
+};
+
+// @desc    Admin xóa đơn hàng (Soft delete)
+// @route   DELETE /api/admin/bookings/:id
+exports.adminDeleteBooking = async (req, res, next) => {
+  try {
+    let booking = await Booking.findWithDeleted({ _id: req.params.id })
+      .select('+isDeleted +deletedAt +deletedBy')
+      .populate("service")
+      .populate("user")
+      .populate("provider")
+      .then(bookings => bookings[0]);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy đơn hàng"
+      });
+    }
+
+    // Kiểm tra xem booking đã bị xóa chưa
+    if (booking.isDeleted) {
+      return res.status(400).json({
+        success: false,
+        message: "Đơn hàng đã bị xóa trước đó"
+      });
+    }
+
+    // Soft delete booking
+    await booking.softDelete(req.user._id, 'Admin xóa đơn hàng');
+
+    res.status(200).json({
+      success: true,
+      message: "Đã xóa đơn hàng thành công",
+      data: {
+        id: booking._id,
+        deletedAt: booking.deletedAt,
+        deletedBy: booking.deletedBy,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Admin delete booking error:', {
+      bookingId: req.params.id,
+      error: error.message,
+      stack: error.stack
+    });
     next(error);
   }
 };

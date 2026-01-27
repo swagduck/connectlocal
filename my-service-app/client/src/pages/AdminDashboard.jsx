@@ -128,6 +128,15 @@ const AdminDashboard = () => {
         } catch (error) { toast.error("Lỗi cập nhật đơn hàng"); }
     };
 
+    const handleAdminDeleteBooking = async (id) => {
+        if (!window.confirm(`Bạn muốn xóa vĩnh viễn đơn hàng này?`)) return;
+        try {
+            await api.delete(`/admin/bookings/${id}`);
+            toast.success("Đã xóa đơn hàng thành công");
+            setBookings(bookings.map(b => b._id === id ? { ...b, isDeleted: true } : b));
+        } catch (error) { toast.error("Lỗi xóa đơn hàng"); }
+    };
+
     const handleUpdateRequest = async (id, status) => {
         const actionText = status === 'approved' ? 'DUYỆT' : 'TỪ CHỐI';
         if (!window.confirm(`Bạn muốn ${actionText} yêu cầu này?`)) return;
@@ -501,6 +510,7 @@ const AdminDashboard = () => {
                                             <th className="p-4">Đơn hàng</th>
                                             <th className="p-4">Các bên</th>
                                             <th className="p-4">Trạng thái</th>
+                                            <th className="p-4">Trạng thái xóa</th>
                                             <th className="p-4">Can thiệp Admin</th>
                                         </tr>
                                     </thead>
@@ -518,8 +528,21 @@ const AdminDashboard = () => {
                                                 </td>
                                                 <td className="p-4">{getStatusBadge(b.status)}</td>
                                                 <td className="p-4">
-                                                    {(b.status !== 'completed' && b.status !== 'cancelled') ? (
-                                                        <div className="flex gap-2">
+                                                    {b.isDeleted ? (
+                                                        <span className="bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-bold">
+                                                            Đã xóa
+                                                        </span>
+                                                    ) : (
+                                                        <span className="bg-green-100 text-green-600 px-2 py-1 rounded text-xs font-bold">
+                                                            Bình thường
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="p-4">
+                                                    {b.isDeleted ? (
+                                                        <span className="text-gray-400 italic text-xs">Đã bị xóa</span>
+                                                    ) : (b.status !== 'completed' && b.status !== 'cancelled') ? (
+                                                        <div className="flex gap-2 flex-wrap">
                                                             <button
                                                                 onClick={() => handleAdminUpdateBooking(b._id, 'cancelled')}
                                                                 className="bg-red-100 text-red-600 px-3 py-1 rounded text-xs font-bold hover:bg-red-200 flex items-center gap-1 transition-colors"
@@ -532,8 +555,24 @@ const AdminDashboard = () => {
                                                             >
                                                                 <CheckCircle size={14} /> Duyệt
                                                             </button>
+                                                            <button
+                                                                onClick={() => handleAdminDeleteBooking(b._id)}
+                                                                className="bg-gray-100 text-gray-600 px-3 py-1 rounded text-xs font-bold hover:bg-gray-200 flex items-center gap-1 transition-colors"
+                                                            >
+                                                                <Trash2 size={14} /> Xóa
+                                                            </button>
                                                         </div>
-                                                    ) : <span className="text-gray-400 italic text-xs">Đã kết thúc</span>}
+                                                    ) : (
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => handleAdminDeleteBooking(b._id)}
+                                                                className="bg-gray-100 text-gray-600 px-3 py-1 rounded text-xs font-bold hover:bg-gray-200 flex items-center gap-1 transition-colors"
+                                                            >
+                                                                <Trash2 size={14} /> Xóa
+                                                            </button>
+                                                            <span className="text-gray-400 italic text-xs">Đã kết thúc</span>
+                                                        </div>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
