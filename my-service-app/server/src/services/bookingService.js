@@ -144,7 +144,9 @@ class BookingService {
       // Validate booking data with timezone
       const validation = await this.validateBookingData(userId, serviceId, date, userTimezone);
       if (!validation.valid) {
-        await session.abortTransaction();
+        if (session.inTransaction()) {
+          await session.abortTransaction();
+        }
         session.endSession();
         throw new Error(validation.errors.join(', '));
       }
@@ -157,7 +159,9 @@ class BookingService {
       // Validate wallet balance
       const balanceValidation = await this.validateWalletBalance(userId, service.price);
       if (!balanceValidation.valid) {
-        await session.abortTransaction();
+        if (session.inTransaction()) {
+          await session.abortTransaction();
+        }
         session.endSession();
         throw new Error(balanceValidation.error);
       }
@@ -211,7 +215,9 @@ class BookingService {
       };
 
     } catch (error) {
-      await session.abortTransaction();
+      if (session.inTransaction()) {
+        await session.abortTransaction();
+      }
       session.endSession();
       console.error('❌ Booking creation failed:', error.message);
       throw error;
@@ -230,26 +236,70 @@ class BookingService {
       const booking = await Booking.findById(bookingId)
         .populate('service')
         .populate('user')
+        .populate('provider')
         .session(session);
 
       if (!booking) {
-        await session.abortTransaction();
+        if (session.inTransaction()) {
+          await session.abortTransaction();
+        }
         session.endSession();
         throw new Error('Không tìm thấy đơn hàng');
       }
 
+      // Check if service exists
+      if (!booking.service) {
+        if (session.inTransaction()) {
+          await session.abortTransaction();
+        }
+        session.endSession();
+        throw new Error('Dịch vụ của đơn hàng này không tồn tại hoặc đã bị xóa');
+      }
+
       // Validate permissions
       const providerId = booking.provider._id ? booking.provider._id.toString() : booking.provider.toString();
-      if (providerId !== userId && userRole !== 'admin') {
-        await session.abortTransaction();
+      const customerId = booking.user._id ? booking.user._id.toString() : booking.user.toString();
+      const userIdStr = userId.toString ? userId.toString() : userId;
+      
+      console.log(`🔍 Permission check:`, {
+        bookingId,
+        providerId,
+        customerId,
+        userId: userIdStr,
+        userRole,
+        isProvider: providerId === userIdStr,
+        isCustomer: customerId === userIdStr,
+        isAdmin: userRole === 'admin'
+      });
+      
+      // Check if user has permission
+      const isProvider = providerId === userIdStr;
+      const isCustomer = customerId === userIdStr;
+      const isAdmin = userRole === 'admin';
+      
+      if (!isProvider && !isCustomer && !isAdmin) {
+        if (session.inTransaction()) {
+          await session.abortTransaction();
+        }
         session.endSession();
         throw new Error('Bạn không có quyền xử lý đơn hàng này');
+      }
+      
+      // Additional permission checks based on user role and status
+      if (isCustomer && !['cancelled'].includes(newStatus)) {
+        if (session.inTransaction()) {
+          await session.abortTransaction();
+        }
+        session.endSession();
+        throw new Error('Khách hàng chỉ có thể hủy đơn hàng');
       }
 
       // Validate status transition
       const validTransitions = this.getValidStatusTransitions(booking.status);
       if (!validTransitions.includes(newStatus)) {
-        await session.abortTransaction();
+        if (session.inTransaction()) {
+          await session.abortTransaction();
+        }
         session.endSession();
         throw new Error(`Không thể chuyển từ ${booking.status} sang ${newStatus}`);
       }
@@ -274,7 +324,10 @@ class BookingService {
       };
 
     } catch (error) {
-      await session.abortTransaction();
+      // Only abort transaction if it's still in progress
+      if (session.inTransaction()) {
+        await session.abortTransaction();
+      }
       session.endSession();
       console.error('❌ Booking status update failed:', error.message);
       throw error;
@@ -322,7 +375,7 @@ class BookingService {
       amount,
       type: 'earning',
       status: 'completed',
-      description: `Thu tiền từ hoàn thành dịch vụ: ${booking.service.title}`,
+      description: `Thu tiền từ hoàn thành dịch vụ: ${booking.service?.title || 'Dịch vụ'}`,
       bookingId: booking._id,
     }], { session });
 
@@ -333,7 +386,7 @@ class BookingService {
         amount: booking.platformFee,
         type: 'commission',
         status: 'completed',
-        description: `Phí nền tảng từ dịch vụ: ${booking.service.title}`,
+        description: `Phí nền tảng từ dịch vụ: ${booking.service?.title || 'Dịch vụ'}`,
         bookingId: booking._id,
       }], { session });
     }
@@ -345,7 +398,7 @@ class BookingService {
    * Process booking cancellation - refund customer
    */
   async processCancellation(booking, session) {
-    const amount = booking.price || booking.service.price;
+    const amount = booking.price || booking.service?.price || 0;
 
     // Find customer and refund money
     const customer = await User.findById(booking.user._id).session(session);
@@ -362,7 +415,7 @@ class BookingService {
       amount,
       type: 'refund',
       status: 'completed',
-      description: `Hoàn tiền do hủy đơn dịch vụ: ${booking.service.title}`,
+      description: `Hoàn tiền do hủy đơn dịch vụ: ${booking.service?.title || 'Dịch vụ'}`,
       bookingId: booking._id,
     }], { session });
 
@@ -380,6 +433,7 @@ class BookingService {
       ],
       [config.booking.statuses.CONFIRMED]: [
         config.booking.statuses.IN_PROGRESS,
+        config.booking.statuses.COMPLETED,
         config.booking.statuses.CANCELLED,
       ],
       [config.booking.statuses.IN_PROGRESS]: [
@@ -409,10 +463,18 @@ class BookingService {
     // Build query
     let query = { isDeleted: false };
     
+    console.log(`🔍 getUserBookings:`, { userId, userRole });
+    
     if (userRole === 'provider') {
-      query.provider = userId;
+      // Providers can see bookings where they are the provider OR where they are the customer (self-booked)
+      query.$or = [
+        { provider: userId },
+        { user: userId }
+      ];
+      console.log(`🔍 Filtering bookings for provider: ${userId} (as provider or customer)`);
     } else {
       query.user = userId;
+      console.log(`🔍 Filtering bookings for user (customer): ${userId}`);
     }
 
     // Add status filter
@@ -535,7 +597,19 @@ class BookingService {
    * Soft delete booking
    */
   async softDeleteBooking(bookingId, userId, reason = '') {
-    const booking = await Booking.findById(bookingId).select('+isDeleted +deletedAt');
+    console.log(`🔍 Soft delete request:`, { bookingId, userId, reason });
+    
+    const booking = await Booking.findById(bookingId)
+      .select('+isDeleted +deletedAt +deletedBy +deletionReason')
+      .populate('user')
+      .populate('provider');
+    
+    console.log(`🔍 Found booking:`, { 
+      bookingId: booking?._id, 
+      isDeleted: booking?.isDeleted,
+      userId: booking?.user?._id,
+      providerId: booking?.provider?._id
+    });
     
     if (!booking) {
       throw new Error('Không tìm thấy đơn hàng');
@@ -545,13 +619,29 @@ class BookingService {
       throw new Error('Đơn hàng đã bị xóa trước đó');
     }
 
-    // Check permissions
-    if (booking.user.toString() !== userId && 
-        booking.provider.toString() !== userId) {
+    // Check permissions - user can delete their own bookings, provider can delete bookings assigned to them
+    const userIdStr = userId.toString ? userId.toString() : userId;
+    
+    // Get IDs from populated objects
+    const bookingUserId = booking.user._id ? booking.user._id.toString() : booking.user.toString();
+    const bookingProviderId = booking.provider._id ? booking.provider._id.toString() : booking.provider.toString();
+    
+    console.log(`🔍 Permission check:`, {
+      userIdStr,
+      bookingUser: booking.user,
+      bookingProvider: booking.provider,
+      userMatch: bookingUserId === userIdStr,
+      providerMatch: bookingProviderId === userIdStr
+    });
+    
+    // Allow user (customer) to delete their own bookings
+    // Allow provider to delete bookings assigned to them
+    if (bookingUserId !== userIdStr && 
+        bookingProviderId !== userIdStr) {
       throw new Error('Bạn không có quyền xóa đơn này');
     }
 
-    await booking.softDelete(userId, reason);
+    await booking.softDelete(userIdStr, reason);
 
     return {
       success: true,

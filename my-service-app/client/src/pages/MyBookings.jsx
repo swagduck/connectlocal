@@ -2,7 +2,7 @@ import { useEffect, useState, useContext } from 'react';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import { Calendar, Clock, User, CheckCircle, XCircle, Trash2, Navigation } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useHistory } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import FreeMapWithDirections from '../components/FreeMapWithDirections';
 
@@ -11,6 +11,7 @@ const MyBookings = () => {
     const [loading, setLoading] = useState(true);
     const [showMap, setShowMap] = useState(null);
     const { user, refreshUser } = useContext(AuthContext);
+    const history = useHistory();
 
     useEffect(() => {
         if (user?._id) {
@@ -164,40 +165,64 @@ const MyBookings = () => {
                                 )}
 
                                 {/* --- KHU VỰC NÚT BẤM CHO THỢ --- */}
-                                {user?.role === 'provider' && (
+                                {(() => {
+                                    console.log(`🔍 Button visibility check:`, {
+                                        userRole: user?.role,
+                                        userId: user?._id,
+                                        bookingProviderId: booking.provider?._id,
+                                        isProvider: user?.role === 'provider',
+                                        isCorrectProvider: booking.provider?._id === user?._id,
+                                        shouldShow: user?.role === 'provider' && booking.provider?._id === user?._id
+                                    });
+                                    return user?.role === 'provider' && booking.provider?._id === user._id;
+                                })() && (
+                                        <div className="flex gap-3 mt-4 pt-4 border-t">
+                                            {booking.status === 'pending' && (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleUpdateStatus(booking._id, 'confirmed')}
+                                                        className="flex items-center gap-1 bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition"
+                                                    >
+                                                        <CheckCircle size={18} /> Nhận đơn
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleUpdateStatus(booking._id, 'cancelled')}
+                                                        className="flex items-center gap-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 transition"
+                                                    >
+                                                        <XCircle size={18} /> Từ chối
+                                                    </button>
+                                                </>
+                                            )}
+
+                                            {booking.status === 'confirmed' && (
+                                                <>
+                                                    <button
+                                                        onClick={() => setShowMap(showMap === booking._id ? null : booking._id)}
+                                                        className="flex items-center gap-1 bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition"
+                                                    >
+                                                        <Navigation size={18} /> Theo dõi
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleUpdateStatus(booking._id, 'completed')}
+                                                        className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition"
+                                                    >
+                                                        <CheckCircle size={18} /> Xác nhận đã làm xong
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+
+                                {/* --- KHU VỰC NÚT BẤM CHO KHÁCH HÀNG --- */}
+                                {user?.role === 'user' && booking.user?._id === user._id && (
                                     <div className="flex gap-3 mt-4 pt-4 border-t">
                                         {booking.status === 'pending' && (
-                                            <>
-                                                <button
-                                                    onClick={() => handleUpdateStatus(booking._id, 'confirmed')}
-                                                    className="flex items-center gap-1 bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition"
-                                                >
-                                                    <CheckCircle size={18} /> Nhận đơn
-                                                </button>
-                                                <button
-                                                    onClick={() => handleUpdateStatus(booking._id, 'cancelled')}
-                                                    className="flex items-center gap-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 transition"
-                                                >
-                                                    <XCircle size={18} /> Từ chối
-                                                </button>
-                                            </>
-                                        )}
-
-                                        {booking.status === 'confirmed' && (
-                                            <>
-                                                <button
-                                                    onClick={() => setShowMap(showMap === booking._id ? null : booking._id)}
-                                                    className="flex items-center gap-1 bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition"
-                                                >
-                                                    <Navigation size={18} /> Theo dõi
-                                                </button>
-                                                <button
-                                                    onClick={() => handleUpdateStatus(booking._id, 'completed')}
-                                                    className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition"
-                                                >
-                                                    <CheckCircle size={18} /> Xác nhận đã làm xong
-                                                </button>
-                                            </>
+                                            <button
+                                                onClick={() => handleUpdateStatus(booking._id, 'cancelled')}
+                                                className="flex items-center gap-1 bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-700 transition"
+                                            >
+                                                <XCircle size={18} /> Hủy đơn
+                                            </button>
                                         )}
                                     </div>
                                 )}

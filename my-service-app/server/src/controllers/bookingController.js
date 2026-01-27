@@ -86,6 +86,14 @@ exports.updateBookingStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
     
+    console.log(`🔍 Update booking status request:`, {
+      bookingId: req.params.id,
+      status,
+      userId: req.user._id,
+      userRole: req.user.role,
+      userName: req.user.name
+    });
+    
     const result = await bookingService.updateBookingStatus(
       req.params.id,
       status,
@@ -123,14 +131,15 @@ exports.updateBookingStatus = async (req, res, next) => {
 
       // Send notification to customer
       const sendToUser = req.app.get('sendToUser');
-      if (sendToUser) {
-        const success = sendToUser(result.booking.user._id.toString(), 'booking_status_notification', {
+      if (sendToUser && result.booking.user && result.booking.service) {
+        const userId = result.booking.user._id ? result.booking.user._id.toString() : result.booking.user.toString();
+        const success = sendToUser(userId, 'booking_status_notification', {
           bookingId: result.booking._id,
-          userId: result.booking.user._id,
+          userId: userId,
           type: notificationType,
           service: {
-            _id: result.booking.service,
-            title: (await Booking.findById(result.booking._id).populate('service')).service.title
+            _id: result.booking.service._id || result.booking.service,
+            title: result.booking.service.title || 'Dịch vụ'
           },
           status,
           message: notificationMessage,
@@ -138,8 +147,10 @@ exports.updateBookingStatus = async (req, res, next) => {
         });
         
         if (!success) {
-          console.log('Failed to send booking status notification to customer:', result.booking.user._id);
+          console.log('Failed to send booking status notification to customer:', userId);
         }
+      } else if (!result.booking.service) {
+        console.log('⚠️ Cannot send notification: booking.service is null');
       }
     }
 
@@ -155,6 +166,13 @@ exports.updateBookingStatus = async (req, res, next) => {
 // @desc    Xóa đơn hàng (Soft Delete)
 exports.deleteBooking = async (req, res, next) => {
   try {
+    console.log(`🔍 Delete booking request:`, {
+      bookingId: req.params.id,
+      userId: req.user._id,
+      userRole: req.user.role,
+      userName: req.user.name
+    });
+    
     const reason = req.body.reason || `Xóa bởi ${req.user.role === 'admin' ? 'admin' : 'user'}`;
     
     const result = await bookingService.softDeleteBooking(
@@ -172,6 +190,7 @@ exports.deleteBooking = async (req, res, next) => {
       message: "Đơn hàng đã được xóa (có thể khôi phục)"
     });
   } catch (error) {
+    console.error('❌ Delete booking error:', error.message);
     next(error);
   }
 };

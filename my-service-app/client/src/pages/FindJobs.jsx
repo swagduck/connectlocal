@@ -10,7 +10,7 @@ const FindJobs = () => {
   const history = useHistory();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Bộ lọc
   const [filters, setFilters] = useState({
     search: '', category: '', minPrice: '', maxPrice: ''
@@ -24,10 +24,10 @@ const FindJobs = () => {
     try {
       // Tạo query string từ object filters
       const params = new URLSearchParams();
-      if(filters.search) params.append('search', filters.search);
-      if(filters.category) params.append('category', filters.category);
-      if(filters.minPrice) params.append('minPrice', filters.minPrice);
-      if(filters.maxPrice) params.append('maxPrice', filters.maxPrice);
+      if (filters.search) params.append('search', filters.search);
+      if (filters.category) params.append('category', filters.category);
+      if (filters.minPrice) params.append('minPrice', filters.minPrice);
+      if (filters.maxPrice) params.append('maxPrice', filters.maxPrice);
 
       const res = await api.get(`/requests?${params.toString()}`);
       setRequests(res.data.data);
@@ -43,67 +43,60 @@ const FindJobs = () => {
     setFilters({ ...filters, [e.target.name]: e.target.value });
   };
 
-  // 👇 HÀM XỬ LÝ KHI BẤM "TRAO ĐỔI NGAY"
-  const handleStartChat = async (targetUserId) => {
-      if (!user) {
-          toast.error("Vui lòng đăng nhập để chat!");
-          return history.push('/login');
-      }
-      try {
-          // Gọi API tạo/lấy phòng chat
-          const res = await api.post('/chat', { userId: targetUserId });
-          // Chuyển hướng sang trang Chat (có thể truyền state để mở đúng tab chat)
-          history.push('/chat', { state: { conversation: res.data } });
-      } catch (error) {
-          toast.error("Lỗi kết nối chat");
-      }
+  // 👇 HÀM XỬ LÝ KHI BẤM "NHẮN TIN" (Giống hệt trang bạn bè)
+  const handleChat = (userId) => {
+    if (!user) {
+      toast.error("Vui lòng đăng nhập để chat!");
+      return history.push('/login');
+    }
+    history.push(`/chat?user=${userId}`);
   };
 
   // 👇 HÀM XỬ LÝ ỨNG TUYỂN
   const handleApply = async (requestId) => {
-      if (!user) {
-          toast.error("Vui lòng đăng nhập để ứng tuyển!");
-          return history.push('/login');
-      }
+    if (!user) {
+      toast.error("Vui lòng đăng nhập để ứng tuyển!");
+      return history.push('/login');
+    }
 
-      if (user.role !== 'provider') {
-          toast.error("Chỉ thợ mới có thể ứng tuyển!");
-          return;
-      }
+    if (user.role !== 'provider') {
+      toast.error("Chỉ thợ mới có thể ứng tuyển!");
+      return;
+    }
 
-      if (!window.confirm("Bạn có chắc muốn ứng tuyển cho yêu cầu này không?")) {
-          return;
-      }
+    if (!window.confirm("Bạn có chắc muốn ứng tuyển cho yêu cầu này không?")) {
+      return;
+    }
 
-      try {
-          setLoading(true);
-          const res = await api.put(`/requests/${requestId}/apply`);
-          toast.success(res.data?.message || "✅ Ứng tuyển thành công! Khách hàng sẽ xem hồ sơ của bạn.");
-          // Refresh danh sách để cập nhật trạng thái
-          await fetchRequests();
-      } catch (error) {
-          const errorMessage = error.response?.data?.message || error.response?.data?.error || "Lỗi ứng tuyển";
-          toast.error(errorMessage);
-          
-          // Nếu chưa có dịch vụ, gợi ý tạo dịch vụ
-          if (errorMessage.includes('dịch vụ')) {
-              setTimeout(() => {
-                  if (window.confirm("Bạn chưa có dịch vụ nào. Bạn muốn tạo dịch vụ ngay bây giờ?")) {
-                      history.push('/create-service');
-                  }
-              }, 2000);
+    try {
+      setLoading(true);
+      const res = await api.put(`/requests/${requestId}/apply`);
+      toast.success(res.data?.message || "✅ Ứng tuyển thành công! Khách hàng sẽ xem hồ sơ của bạn.");
+      // Refresh danh sách để cập nhật trạng thái
+      await fetchRequests();
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || "Lỗi ứng tuyển";
+      toast.error(errorMessage);
+
+      // Nếu chưa có dịch vụ, gợi ý tạo dịch vụ
+      if (errorMessage.includes('dịch vụ')) {
+        setTimeout(() => {
+          if (window.confirm("Bạn chưa có dịch vụ nào. Bạn muốn tạo dịch vụ ngay bây giờ?")) {
+            history.push('/create-service');
           }
-      } finally {
-          setLoading(false);
+        }, 2000);
       }
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 👇 KIỂM TRA THỢ ĐÃ ỨNG TUYỂN CHƯA
   const hasApplied = (request) => {
-      if (!user || !request.applicants) return false;
-      return request.applicants.some(applicant => 
-          (typeof applicant === 'object' ? applicant._id : applicant) === user._id
-      );
+    if (!user || !request.applicants) return false;
+    return request.applicants.some(applicant =>
+      (typeof applicant === 'object' ? applicant._id : applicant) === user._id
+    );
   };
 
   return (
@@ -115,46 +108,46 @@ const FindJobs = () => {
 
       {/* Bộ lọc tìm kiếm */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-10">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative col-span-1 md:col-span-2">
-                <Search className="absolute left-3 top-3.5 text-gray-400" size={20} />
-                <input
-                    type="text" name="search"
-                    placeholder="Tìm theo tên công việc..."
-                    className="w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                    onChange={handleFilterChange}
-                />
-            </div>
-            
-            <select
-                name="category"
-                className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                onChange={handleFilterChange}
-            >
-                <option value="">Tất cả danh mục</option>
-                <option value="Điện nước">Điện nước</option>
-                <option value="Sửa chữa nhà">Sửa chữa nhà</option>
-                <option value="Vệ sinh">Vệ sinh</option>
-                <option value="Vận chuyển">Vận chuyển</option>
-                <option value="Gia sư">Gia sư</option>
-            </select>
-
-            <div className="flex gap-2">
-                <input type="number" name="minPrice" placeholder="Min Giá" className="w-1/2 p-3 border rounded-xl outline-none" onChange={handleFilterChange}/>
-                <input type="number" name="maxPrice" placeholder="Max Giá" className="w-1/2 p-3 border rounded-xl outline-none" onChange={handleFilterChange}/>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="relative col-span-1 md:col-span-2">
+            <Search className="absolute left-3 top-3.5 text-gray-400" size={20} />
+            <input
+              type="text" name="search"
+              placeholder="Tìm theo tên công việc..."
+              className="w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              onChange={handleFilterChange}
+            />
           </div>
+
+          <select
+            name="category"
+            className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+            onChange={handleFilterChange}
+          >
+            <option value="">Tất cả danh mục</option>
+            <option value="Điện nước">Điện nước</option>
+            <option value="Sửa chữa nhà">Sửa chữa nhà</option>
+            <option value="Vệ sinh">Vệ sinh</option>
+            <option value="Vận chuyển">Vận chuyển</option>
+            <option value="Gia sư">Gia sư</option>
+          </select>
+
+          <div className="flex gap-2">
+            <input type="number" name="minPrice" placeholder="Min Giá" className="w-1/2 p-3 border rounded-xl outline-none" onChange={handleFilterChange} />
+            <input type="number" name="maxPrice" placeholder="Max Giá" className="w-1/2 p-3 border rounded-xl outline-none" onChange={handleFilterChange} />
+          </div>
+        </div>
       </div>
 
       {/* Danh sách yêu cầu */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1,2,3,4,5,6].map(i => <div key={i} className="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>)}
+          {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-64 bg-gray-200 rounded-2xl animate-pulse"></div>)}
         </div>
       ) : requests.length === 0 ? (
         <div className="text-center py-20">
-            <img src="https://cdni.iconscout.com/illustration/premium/thumb/empty-state-2130362-1800926.png" alt="Empty" className="w-48 mx-auto opacity-50"/>
-            <p className="text-gray-500 mt-4 text-lg">Chưa có yêu cầu nào phù hợp.</p>
+          <img src="https://cdni.iconscout.com/illustration/premium/thumb/empty-state-2130362-1800926.png" alt="Empty" className="w-48 mx-auto opacity-50" />
+          <p className="text-gray-500 mt-4 text-lg">Chưa có yêu cầu nào phù hợp.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -171,30 +164,30 @@ const FindJobs = () => {
                 </div>
 
                 <h3 className="text-xl font-bold text-gray-800 mb-2 line-clamp-2 group-hover:text-blue-600 transition">
-                    {req.title}
+                  {req.title}
                 </h3>
-                
+
                 {/* Ngân sách nổi bật */}
                 <div className="flex items-center gap-2 mb-4">
-                    <DollarSign size={20} className="text-green-600" />
-                    <span className="text-xl font-bold text-green-700">
-                        {req.budget ? req.budget.toLocaleString() : 'Thỏa thuận'} <span className="text-sm font-normal text-gray-500">VNĐ</span>
-                    </span>
+                  <DollarSign size={20} className="text-green-600" />
+                  <span className="text-xl font-bold text-green-700">
+                    {req.budget ? req.budget.toLocaleString() : 'Thỏa thuận'} <span className="text-sm font-normal text-gray-500">VNĐ</span>
+                  </span>
                 </div>
 
                 <p className="text-gray-600 text-sm mb-6 line-clamp-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                    {req.description}
+                  {req.description}
                 </p>
 
                 <div className="space-y-2 text-sm text-gray-500">
                   <div className="flex items-center gap-2">
-                    <MapPin size={16} className="text-red-400"/>
+                    <MapPin size={16} className="text-red-400" />
                     <span className="truncate">{req.address}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Calendar size={16} className="text-orange-400"/>
+                    <Calendar size={16} className="text-orange-400" />
                     <span className="font-medium text-orange-600">
-                        Hạn chót: {new Date(req.deadline).toLocaleDateString('vi-VN')}
+                      Hạn chót: {new Date(req.deadline).toLocaleDateString('vi-VN')}
                     </span>
                   </div>
                 </div>
@@ -204,8 +197,8 @@ const FindJobs = () => {
               <div className="border-t border-gray-100 p-4 bg-gray-50 rounded-b-2xl">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <img 
-                      src={req.user?.avatar || "https://ui-avatars.com/api/?background=random&name=" + req.user?.name} 
+                    <img
+                      src={req.user?.avatar || "https://ui-avatars.com/api/?background=random&name=" + req.user?.name}
                       alt={req.user?.name}
                       className="w-9 h-9 rounded-full border border-white shadow-sm"
                     />
@@ -214,7 +207,7 @@ const FindJobs = () => {
                       <span className="text-xs text-gray-500">Khách hàng</span>
                     </div>
                   </div>
-                  
+
                   {/* Số lượng ứng viên */}
                   {req.applicants && req.applicants.length > 0 && (
                     <div className="text-xs text-gray-500 flex items-center gap-1">
@@ -228,14 +221,14 @@ const FindJobs = () => {
                 {user && user.role === 'provider' && user._id !== req.user?._id && (
                   <div className="flex gap-2">
                     {hasApplied(req) ? (
-                      <button 
+                      <button
                         disabled
                         className="flex-1 bg-green-100 text-green-700 px-4 py-2 rounded-xl font-bold text-sm border-2 border-green-300 flex items-center justify-center gap-2 cursor-not-allowed"
                       >
                         <CheckCircle size={16} /> Đã ứng tuyển
                       </button>
                     ) : (
-                      <button 
+                      <button
                         onClick={() => handleApply(req._id)}
                         disabled={loading}
                         className="flex-1 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -243,22 +236,24 @@ const FindJobs = () => {
                         <UserCheck size={16} /> Ứng tuyển ngay
                       </button>
                     )}
-                    <button 
-                      onClick={() => handleStartChat(req.user?._id)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-md transition flex items-center gap-2"
+                    <button
+                      onClick={() => handleChat(req.user?._id)}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm flex items-center gap-1"
                     >
-                      <MessageCircle size={16} /> Chat
+                      <MessageCircle size={16} />
+                      Nhắn tin
                     </button>
                   </div>
                 )}
-                
+
                 {/* NÚT CHO USER KHÔNG PHẢI THỢ */}
                 {user && user.role !== 'provider' && user._id !== req.user?._id && (
-                  <button 
-                    onClick={() => handleStartChat(req.user?._id)}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-md transition flex items-center justify-center gap-2"
+                  <button
+                    onClick={() => handleChat(req.user?._id)}
+                    className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm flex items-center justify-center gap-1"
                   >
-                    <MessageCircle size={16} /> Trao đổi với khách hàng
+                    <MessageCircle size={16} />
+                    Nhắn tin
                   </button>
                 )}
               </div>

@@ -11,20 +11,15 @@ const ServiceMap = ({ service, userLocation = null }) => {
 
     // Convert service location to coordinates
     useEffect(() => {
-        console.log('Service data:', service);
-        console.log('Service location:', service?.location);
-        console.log('Service coordinates:', service?.location?.coordinates);
 
         if (service?.location?.coordinates && Array.isArray(service.location.coordinates)) {
             // MongoDB stores as [longitude, latitude], but Google Maps expects {lat, lng}
             const [lng, lat] = service.location.coordinates;
             setServiceCoords({ lat, lng });
-            console.log('Service coords set:', { lat, lng });
         } else {
             // Mock data for testing - use HCMC center
             const mockServiceCoords = { lat: 10.8231, lng: 106.6297 };
             setServiceCoords(mockServiceCoords);
-            console.log('Using mock service coords:', mockServiceCoords);
         }
     }, [service]);
 
@@ -55,7 +50,6 @@ const ServiceMap = ({ service, userLocation = null }) => {
             const { latitude, longitude } = position.coords;
             setUserCoords({ lat: latitude, lng: longitude });
             setLoadingLocation(false);
-            console.log('Location obtained:', { lat: latitude, lng: longitude });
         };
 
         const errorCallback = (error) => {
@@ -63,7 +57,6 @@ const ServiceMap = ({ service, userLocation = null }) => {
 
             // If timeout occurred with high accuracy, try without it
             if (error.code === error.TIMEOUT && options.enableHighAccuracy) {
-                console.log('High accuracy timed out, trying with lower accuracy...');
                 navigator.geolocation.getCurrentPosition(successCallback, errorCallback, {
                     enableHighAccuracy: false,
                     timeout: 10000,

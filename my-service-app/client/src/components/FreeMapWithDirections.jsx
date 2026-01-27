@@ -23,8 +23,6 @@ const FreeMapWithDirections = ({
     const [mapCenter, setMapCenter] = useState([10.8231, 106.6297]); // HCMC center
     const [selectedRoute, setSelectedRoute] = useState('fastest'); // 'fastest', 'shortest', 'scenic'
 
-    // Debug logs
-    console.log('FreeMapWithDirections props:', { origin, destination, showDirections, directions, distance, duration });
 
     // Calculate real directions using OSRM API directly
     const calculateDirections = useCallback(async () => {
@@ -37,22 +35,18 @@ const FreeMapWithDirections = ({
         // Validate coordinates
         if (!originCoords[0] || !originCoords[1] || !destCoords[0] || !destCoords[1] ||
             isNaN(originCoords[0]) || isNaN(originCoords[1]) || isNaN(destCoords[0]) || isNaN(destCoords[1])) {
-            console.log('Invalid coordinates, using mock calculation');
             calculateMockDirections(originCoords, destCoords);
             return;
         }
 
-        console.log('Calculating real OSRM directions:', { originCoords, destCoords, selectedRoute });
 
         try {
             // OSRM API call for real routing - coordinates should be [lng,lat] order
             const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${originCoords[1]},${originCoords[0]};${destCoords[1]},${destCoords[0]}?overview=false&geometries=geojson&steps=true`;
 
-            console.log('OSRM URL:', osrmUrl);
             const response = await fetch(osrmUrl);
             const data = await response.json();
 
-            console.log('OSRM Response:', data);
 
             if (data.routes && data.routes.length > 0) {
                 const route = data.routes[0];
@@ -86,9 +80,6 @@ const FreeMapWithDirections = ({
                             'Đường thực tế (OSRM)'
                 };
 
-                console.log('OSRM route found:', routeData);
-                console.log('Directions state after set:', routeData);
-                console.log('ShowDirections flag:', showDirections);
 
                 setDirections(routeData);
                 setDistance(routeData.distance);

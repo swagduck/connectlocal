@@ -8,6 +8,16 @@ const tokenBlacklist = new Set();
 const protect = async (req, res, next) => {
   let token;
 
+  // Log debug cho DELETE requests
+  if (req.method === 'DELETE' && req.path.includes('/bookings/')) {
+    console.log(`🔍 Auth middleware - DELETE request:`, {
+      path: req.path,
+      method: req.method,
+      hasAuthHeader: !!req.headers.authorization,
+      authHeader: req.headers.authorization?.substring(0, 20) + '...'
+    });
+  }
+
   // 1. Kiểm tra header Authorization có dạng "Bearer <token>"
   if (
     req.headers.authorization &&
@@ -38,9 +48,18 @@ const protect = async (req, res, next) => {
         return res.status(403).json({ success: false, message: "Tài khoản của bạn đã bị khóa" });
       }
 
+      // Log success cho DELETE requests
+      if (req.method === 'DELETE' && req.path.includes('/bookings/')) {
+        console.log(`🔍 Auth middleware - DELETE request authenticated:`, {
+          userId: req.user._id,
+          userRole: req.user.role,
+          userName: req.user.name
+        });
+      }
+
       next(); // Cho phép đi tiếp
     } catch (error) {
-      console.error(error);
+      console.error('❌ Auth middleware error:', error.message);
       return res.status(401).json({ success: false, message: "Token không hợp lệ, vui lòng đăng nhập lại" });
     }
   }
